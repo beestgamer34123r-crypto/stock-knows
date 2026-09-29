@@ -91,12 +91,12 @@
           <div class="flex items-center gap-3">
             <div>
               <div class="flex items-center gap-2">
-                <h1 id="stock-symbol-display" class="brand-font text-2xl font-black tracking-tight text-white">NVDA</h1>
-                <span id="stock-name-display" class="text-xs text-slate-400 font-medium truncate max-w-[180px]">NVIDIA Corporation</span>
+                <h1 id="stock-symbol-display" class="brand-font text-2xl font-black tracking-tight text-slate-900 dark:text-white">NVDA</h1>
+                <span id="stock-name-display" class="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-[180px]">NVIDIA Corporation</span>
               </div>
               <div class="flex items-baseline gap-2 mt-0.5">
-                <span id="stock-price-display" class="mono-font text-2xl font-bold text-white">$135.50</span>
-                <span id="stock-change-display" class="mono-font text-sm font-bold text-emerald-400">+3.20 (+2.42%)</span>
+                <span id="stock-price-display" class="mono-font text-2xl font-bold text-slate-900 dark:text-white">$135.50</span>
+                <span id="stock-change-display" class="mono-font text-sm font-bold text-emerald-500 dark:text-emerald-400">+3.20 (+2.42%)</span>
               </div>
             </div>
           </div>
@@ -172,7 +172,7 @@
           </div>
 
           <!-- Technical Metrics Grid -->
-          <div class="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-center text-xs">
+          <div class="grid grid-cols-4 gap-1.5 pt-2 border-t border-white/5 text-center text-xs">
             <div class="bg-slate-900/60 p-1.5 rounded-lg">
               <span class="text-[10px] text-slate-400 block">RSI (14)</span>
               <span id="agent1-rsi-value" class="font-mono font-bold text-slate-200">--</span>
@@ -182,8 +182,12 @@
               <span id="agent1-ema20-value" class="font-mono font-bold text-slate-200">--</span>
             </div>
             <div class="bg-slate-900/60 p-1.5 rounded-lg">
-              <span class="text-[10px] text-slate-400 block">Volume</span>
-              <span id="agent1-volume-surge" class="text-slate-200">Normal</span>
+              <span class="text-[10px] text-slate-400 block">Support</span>
+              <span id="agent1-support-value" class="font-mono font-bold text-emerald-400">--</span>
+            </div>
+            <div class="bg-slate-900/60 p-1.5 rounded-lg">
+              <span class="text-[10px] text-slate-400 block">Resistance</span>
+              <span id="agent1-resistance-value" class="font-mono font-bold text-rose-400">--</span>
             </div>
           </div>
 

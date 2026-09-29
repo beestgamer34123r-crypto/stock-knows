@@ -304,3 +304,74 @@ h1, h2, h3, h4, .brand-font {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.45);
 }
+
+/* Light Theme Precision Overrides */
+html.light body {
+  background-color: #f8fafc;
+  color: #1e293b;
+}
+
+html.light header {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-bottom-color: rgba(226, 232, 240, 0.9) !important;
+}
+
+html.light .brand-font,
+html.light #stock-symbol-display,
+html.light #stock-price-display,
+html.light h1,
+html.light h2,
+html.light h3 {
+  color: #0f172a !important;
+}
+
+html.light .cute-card {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 10px 30px -8px rgba(100, 116, 139, 0.12);
+}
+
+html.light .cute-card .bg-slate-900\/90,
+html.light .cute-card .bg-slate-900\/80,
+html.light .cute-card .bg-slate-900\/60,
+html.light .cute-card .bg-slate-900\/40,
+html.light .cute-card .bg-slate-900,
+html.light .cute-card .bg-slate-800\/40 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light .text-slate-300,
+html.light .text-slate-200,
+html.light .text-slate-100 {
+  color: #1e293b !important;
+}
+
+html.light .ticker-chip {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+html.light .ticker-chip:hover {
+  border-color: #8b5cf6;
+}
+
+html.light input {
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+html.light .chat-bubble-agent {
+  background-color: #f8fafc;
+  color: #0f172a;
+  border-color: #e2e8f0;
+}
+
+html.light #chart-tooltip {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(203, 213, 225, 0.9);
+  color: #0f172a;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+}

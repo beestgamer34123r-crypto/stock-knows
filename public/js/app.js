@@ -313,121 +313,146 @@ async function runAnalysis(symbol = 'NVDA') {
   }
 }
 
-function renderAgent1(a1) {
-  // Probabilities
-  elements.agent1BullishProb.innerText = `${a1.probabilities.bullish}%`;
-  elements.agent1BearishProb.innerText = `${a1.probabilities.bearish}%`;
-  elements.agent1NeutralProb.innerText = `${a1.probabilities.neutral}%`;
+function safeText(el, text) {
+  if (el) el.innerText = text;
+}
 
-  elements.agent1BarBullish.style.width = `${a1.probabilities.bullish}%`;
-  elements.agent1BarBearish.style.width = `${a1.probabilities.bearish}%`;
-  elements.agent1BarNeutral.style.width = `${a1.probabilities.neutral}%`;
+function safeWidth(el, width) {
+  if (el) el.style.width = width;
+}
+
+function renderAgent1(a1) {
+  if (!a1) return;
+
+  // Probabilities
+  safeText(elements.agent1BullishProb, `${a1.probabilities.bullish}%`);
+  safeText(elements.agent1BearishProb, `${a1.probabilities.bearish}%`);
+  safeText(elements.agent1NeutralProb, `${a1.probabilities.neutral}%`);
+
+  safeWidth(elements.agent1BarBullish, `${a1.probabilities.bullish}%`);
+  safeWidth(elements.agent1BarBearish, `${a1.probabilities.bearish}%`);
+  safeWidth(elements.agent1BarNeutral, `${a1.probabilities.neutral}%`);
 
   // Technical Gauges
-  elements.agent1RsiValue.innerText = a1.technicalMetrics.rsi14;
-  elements.agent1RsiValue.className = `font-mono font-bold ${a1.technicalMetrics.rsi14 > 70 ? 'text-rose-400' : a1.technicalMetrics.rsi14 < 30 ? 'text-emerald-400' : 'text-amber-400'}`;
+  if (elements.agent1RsiValue) {
+    elements.agent1RsiValue.innerText = a1.technicalMetrics.rsi14;
+    elements.agent1RsiValue.className = `font-mono font-bold ${a1.technicalMetrics.rsi14 > 70 ? 'text-rose-400' : a1.technicalMetrics.rsi14 < 30 ? 'text-emerald-400' : 'text-amber-400'}`;
+  }
 
-  elements.agent1Ema20Value.innerText = `$${a1.technicalMetrics.ema20.toFixed(2)}`;
-  elements.agent1SupportValue.innerText = `$${a1.technicalMetrics.support.toFixed(2)}`;
-  elements.agent1ResistanceValue.innerText = `$${a1.technicalMetrics.resistance.toFixed(2)}`;
-  elements.agent1VolumeSurge.innerText = a1.technicalMetrics.isVolumeSurge ? 'Surge ⚡' : 'Normal';
-  elements.agent1VolumeSurge.className = `font-semibold text-xs ${a1.technicalMetrics.isVolumeSurge ? 'text-amber-400 font-bold' : 'text-slate-400'}`;
+  safeText(elements.agent1Ema20Value, `$${a1.technicalMetrics.ema20.toFixed(2)}`);
+  safeText(elements.agent1SupportValue, `$${a1.technicalMetrics.support.toFixed(2)}`);
+  safeText(elements.agent1ResistanceValue, `$${a1.technicalMetrics.resistance.toFixed(2)}`);
+  
+  if (elements.agent1VolumeSurge) {
+    elements.agent1VolumeSurge.innerText = a1.technicalMetrics.isVolumeSurge ? 'Surge ⚡' : 'Normal';
+    elements.agent1VolumeSurge.className = `font-semibold text-xs ${a1.technicalMetrics.isVolumeSurge ? 'text-amber-400 font-bold' : 'text-slate-400'}`;
+  }
 
   // Patterns list
-  elements.agent1PatternsList.innerHTML = '';
-  if (a1.detectedPatterns.length === 0) {
-    elements.agent1PatternsList.innerHTML = `<div class="text-xs text-slate-400 italic py-1">No single extreme reversal pattern on the last candle; price following moving averages.</div>`;
-  } else {
-    a1.detectedPatterns.forEach(p => {
-      const isBull = p.bias === 'Bullish';
-      const div = document.createElement('div');
-      div.className = 'flex items-center justify-between p-2 rounded-xl bg-slate-800/40 border border-slate-700/40 text-xs';
-      div.innerHTML = `
-        <div class="flex items-center gap-1.5 font-semibold">
-          <span>${isBull ? '✨' : '🔻'}</span>
-          <span>${p.name}</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${isBull ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${p.bias}</span>
-          <span class="font-mono text-slate-400">${p.confidence}%</span>
-        </div>
-      `;
-      elements.agent1PatternsList.appendChild(div);
-    });
+  if (elements.agent1PatternsList) {
+    elements.agent1PatternsList.innerHTML = '';
+    if (a1.detectedPatterns.length === 0) {
+      elements.agent1PatternsList.innerHTML = `<div class="text-xs text-slate-400 italic py-1">No single extreme reversal pattern on the last candle; price following moving averages.</div>`;
+    } else {
+      a1.detectedPatterns.forEach(p => {
+        const isBull = p.bias === 'Bullish';
+        const div = document.createElement('div');
+        div.className = 'flex items-center justify-between p-2 rounded-xl bg-slate-800/40 border border-slate-700/40 text-xs';
+        div.innerHTML = `
+          <div class="flex items-center gap-1.5 font-semibold">
+            <span>${isBull ? '✨' : '🔻'}</span>
+            <span>${p.name}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${isBull ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${p.bias}</span>
+            <span class="font-mono text-slate-400">${p.confidence}%</span>
+          </div>
+        `;
+        elements.agent1PatternsList.appendChild(div);
+      });
+    }
   }
 }
 
 function renderAgent2(a2) {
-  // Probabilities
-  elements.agent2BullishProb.innerText = `${a2.probabilities.bullish}%`;
-  elements.agent2BearishProb.innerText = `${a2.probabilities.bearish}%`;
-  elements.agent2NeutralProb.innerText = `${a2.probabilities.neutral}%`;
+  if (!a2) return;
 
-  elements.agent2BarBullish.style.width = `${a2.probabilities.bullish}%`;
-  elements.agent2BarBearish.style.width = `${a2.probabilities.bearish}%`;
-  elements.agent2BarNeutral.style.width = `${a2.probabilities.neutral}%`;
+  // Probabilities
+  safeText(elements.agent2BullishProb, `${a2.probabilities.bullish}%`);
+  safeText(elements.agent2BearishProb, `${a2.probabilities.bearish}%`);
+  safeText(elements.agent2NeutralProb, `${a2.probabilities.neutral}%`);
+
+  safeWidth(elements.agent2BarBullish, `${a2.probabilities.bullish}%`);
+  safeWidth(elements.agent2BarBearish, `${a2.probabilities.bearish}%`);
+  safeWidth(elements.agent2BarNeutral, `${a2.probabilities.neutral}%`);
 
   // Sentiment Stats
-  elements.agent2BuyingPressure.innerText = a2.buyingPressure;
-  elements.agent2RetailMood.innerText = a2.retailMood;
+  safeText(elements.agent2BuyingPressure, a2.buyingPressure);
+  safeText(elements.agent2RetailMood, a2.retailMood);
 
   // News Articles
-  elements.agent2ArticlesList.innerHTML = '';
-  if (!a2.articles || a2.articles.length === 0) {
-    elements.agent2ArticlesList.innerHTML = `<div class="text-xs text-slate-400 italic py-1">No recent articles found for this ticker.</div>`;
-  } else {
-    a2.articles.forEach(art => {
-      const isPos = art.sentiment === 'Positive';
-      const isNeg = art.sentiment === 'Negative';
-      const badgeClass = isPos ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : isNeg ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-slate-700/50 text-slate-300 border-slate-600/30';
+  if (elements.agent2ArticlesList) {
+    elements.agent2ArticlesList.innerHTML = '';
+    if (!a2.articles || a2.articles.length === 0) {
+      elements.agent2ArticlesList.innerHTML = `<div class="text-xs text-slate-400 italic py-1">No recent articles found for this ticker.</div>`;
+    } else {
+      a2.articles.forEach(art => {
+        const isPos = art.sentiment === 'Positive';
+        const isNeg = art.sentiment === 'Negative';
+        const badgeClass = isPos ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : isNeg ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-slate-700/50 text-slate-300 border-slate-600/30';
 
-      const a = document.createElement('a');
-      a.href = art.link || '#';
-      a.target = '_blank';
-      a.className = 'block p-2.5 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700/40 text-xs transition';
-      a.innerHTML = `
-        <div class="flex justify-between items-start gap-2 mb-1">
-          <span class="text-slate-400 text-[10px]">${art.publisher} • ${art.publishedAt}</span>
-          <span class="text-[10px] px-1.5 py-0.5 rounded border ${badgeClass} font-semibold">${art.sentiment}</span>
-        </div>
-        <div class="font-medium text-slate-200 line-clamp-2 hover:text-purple-300">${art.title}</div>
-      `;
-      elements.agent2ArticlesList.appendChild(a);
-    });
+        const a = document.createElement('a');
+        a.href = art.link || '#';
+        a.target = '_blank';
+        a.className = 'block p-2.5 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700/40 text-xs transition';
+        a.innerHTML = `
+          <div class="flex justify-between items-start gap-2 mb-1">
+            <span class="text-slate-400 text-[10px]">${art.publisher} • ${art.publishedAt}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded border ${badgeClass} font-semibold">${art.sentiment}</span>
+          </div>
+          <div class="font-medium text-slate-200 line-clamp-2 hover:text-purple-300">${art.title}</div>
+        `;
+        elements.agent2ArticlesList.appendChild(a);
+      });
+    }
   }
 }
 
 function renderAgent3(a3) {
-  // Master Combined Probabilities
-  elements.agent3BullishProb.innerText = `${a3.probabilities.bullish}%`;
-  elements.agent3BearishProb.innerText = `${a3.probabilities.bearish}%`;
-  elements.agent3NeutralProb.innerText = `${a3.probabilities.neutral}%`;
+  if (!a3) return;
 
-  elements.agent3BarBullish.style.width = `${a3.probabilities.bullish}%`;
-  elements.agent3BarBearish.style.width = `${a3.probabilities.bearish}%`;
-  elements.agent3BarNeutral.style.width = `${a3.probabilities.neutral}%`;
+  // Master Combined Probabilities
+  safeText(elements.agent3BullishProb, `${a3.probabilities.bullish}%`);
+  safeText(elements.agent3BearishProb, `${a3.probabilities.bearish}%`);
+  safeText(elements.agent3NeutralProb, `${a3.probabilities.neutral}%`);
+
+  safeWidth(elements.agent3BarBullish, `${a3.probabilities.bullish}%`);
+  safeWidth(elements.agent3BarBearish, `${a3.probabilities.bearish}%`);
+  safeWidth(elements.agent3BarNeutral, `${a3.probabilities.neutral}%`);
 
   // Action Verdict Badge
-  elements.agent3VerdictText.innerText = a3.actionVerdict;
+  safeText(elements.agent3VerdictText, a3.actionVerdict);
   const isStrongBull = a3.probabilities.bullish >= 65;
   const isStrongBear = a3.probabilities.bearish >= 65;
 
-  elements.agent3VerdictBadge.className = `px-3 py-1.5 rounded-xl font-bold text-xs inline-flex items-center gap-1.5 ${
-    isStrongBull ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
-    isStrongBear ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
-    'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-  }`;
+  if (elements.agent3VerdictBadge) {
+    elements.agent3VerdictBadge.className = `px-3 py-1.5 rounded-xl font-bold text-xs inline-flex items-center gap-1.5 ${
+      isStrongBull ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+      isStrongBear ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
+      'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+    }`;
+  }
 
   // Feasibility
-  elements.agent3IntradayScore.innerText = `${a3.intraday.probability}%`;
-  elements.agent3IntradayText.innerText = a3.intraday.suitability;
-  elements.agent3SwingScore.innerText = `${a3.swing.probability}%`;
-  elements.agent3SwingText.innerText = a3.swing.suitability;
+  safeText(elements.agent3IntradayScore, `${a3.intraday.probability}%`);
+  safeText(elements.agent3IntradayText, a3.intraday.suitability);
+  safeText(elements.agent3SwingScore, `${a3.swing.probability}%`);
+  safeText(elements.agent3SwingText, a3.swing.suitability);
 
   // Trading Anchors
-  elements.agent3StopLoss.innerText = `$${a3.levels.stopLoss}`;
-  elements.agent3Target1.innerText = `$${a3.levels.target1}`;
-  elements.agent3Rrr.innerText = a3.levels.riskRewardRatio;
+  safeText(elements.agent3StopLoss, `$${a3.levels.stopLoss}`);
+  safeText(elements.agent3Target1, `$${a3.levels.target1}`);
+  safeText(elements.agent3Rrr, a3.levels.riskRewardRatio);
 }
 
 /**
@@ -547,7 +572,7 @@ function renderSummaryModal() {
               <div class="font-bold text-sm text-white">${s.symbol}</div>
               <div class="text-xs text-slate-400">$${s.price.toFixed(2)}</div>
             </div>
-            <div class="text-xs font-bold font-mono text-emerald-400">+${s.changePercent.toFixed(2)}%</div>
+            <div class="text-xs font-bold font-mono ${s.changePercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${s.changePercent >= 0 ? '+' : ''}${s.changePercent.toFixed(2)}%</div>
           </button>
         `).join('')}
       </div>
