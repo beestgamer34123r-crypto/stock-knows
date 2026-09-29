@@ -383,47 +383,48 @@
       <div class="cute-card p-4 relative flex flex-col">
         
         <!-- Stock Title, Price & Timeframe Controls -->
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3">
           <div>
             <div class="flex items-center gap-2">
-              <h1 id="stock-symbol-display" class="brand-font text-2xl font-black tracking-tight text-white">RELIANCE</h1>
-              <span id="stock-name-display" class="text-xs text-slate-400 font-medium truncate max-w-[180px]">Reliance Industries Ltd.</span>
+              <h1 id="stock-symbol-display" class="brand-font text-xl sm:text-2xl font-black tracking-tight text-white">RELIANCE</h1>
+              <span id="stock-name-display" class="text-xs text-slate-400 font-medium truncate max-w-[140px] sm:max-w-[200px]">Reliance Industries Ltd.</span>
             </div>
             <div class="flex items-baseline gap-2 mt-0.5">
-              <span id="stock-price-display" class="mono-font text-2xl font-bold text-white">₹2,925.40</span>
-              <span id="stock-change-display" class="mono-font text-sm font-bold text-emerald-400">+35.20 (+1.22%)</span>
+              <span id="stock-price-display" class="mono-font text-xl sm:text-2xl font-bold text-white">₹1,188.00</span>
+              <span id="stock-change-display" class="mono-font text-xs sm:text-sm font-bold text-rose-400">-9.60 (-0.80%)</span>
+              <span class="text-[9px] sm:text-[10px] text-emerald-400 font-mono px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">TradingView Live</span>
             </div>
           </div>
 
           <!-- Chart Mode Switcher -->
           <div class="flex items-center gap-1 sm:gap-1.5">
-            <button id="btn-show-patterns" class="px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold bg-purple-600 text-white transition flex items-center gap-1" title="Candlestick Patterns & Projected Future Trajectory Cone">
-              <span>🔮</span> Pattern & Target
+            <button id="btn-show-tv" class="px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold bg-purple-600 text-white transition flex items-center gap-1">
+              <span>📈</span> TradingView Live
             </button>
-            <button id="btn-show-tv" class="px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold text-slate-400 hover:text-white bg-slate-900 border border-slate-800 transition flex items-center gap-1">
-              <span>📈</span> TradingView
+            <button id="btn-show-patterns" class="px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold text-slate-400 hover:text-white bg-slate-900 border border-slate-800 transition flex items-center gap-1" title="Candlestick Patterns & Projected Future Trajectory Cone">
+              <span>🔮</span> Pattern Cone
             </button>
           </div>
         </div>
 
-        <!-- 1. Custom Canvas Candlestick Container (Default: Instant, Crisp, Patterns & Target Cone) -->
-        <div id="canvas-chart-container" class="relative w-full h-[290px] sm:h-[390px] rounded-xl overflow-hidden border border-slate-800/80 bg-slate-950">
-          <canvas id="candle-canvas" class="w-full h-full cursor-crosshair touch-none"></canvas>
-          <div id="chart-tooltip"></div>
+        <!-- 1. TradingView Widget Container (Live TradingView Platform - PRIMARY & DEFAULT) -->
+        <div id="tv-chart-container" class="relative w-full h-[310px] sm:h-[420px] rounded-xl overflow-hidden border border-slate-800/80 bg-slate-950">
+          <div id="tradingview_widget" class="w-full h-full"></div>
         </div>
 
-        <!-- 2. TradingView Widget Container (Live TradingView Platform) -->
-        <div id="tv-chart-container" class="relative w-full h-[290px] sm:h-[390px] rounded-xl overflow-hidden border border-slate-800/80 bg-slate-950 hidden">
-          <div id="tradingview_widget" class="w-full h-full"></div>
+        <!-- 2. Custom Canvas Candlestick Container (Alternative Pattern View) -->
+        <div id="canvas-chart-container" class="relative w-full h-[310px] sm:h-[420px] rounded-xl overflow-hidden border border-slate-800/80 bg-slate-950 hidden">
+          <canvas id="candle-canvas" class="w-full h-full cursor-crosshair touch-none"></canvas>
+          <div id="chart-tooltip"></div>
         </div>
 
         <!-- Chart Legend / TradingView Badge -->
         <div class="flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] text-slate-400 mt-2 px-1 gap-1">
           <div class="flex items-center gap-2">
-            <span class="text-purple-400 font-semibold">● Real-Time Candlestick Patterns & Cone</span>
+            <span class="text-emerald-400 font-semibold flex items-center gap-1"><span class="pulse-dot bg-emerald-400"></span> TradingView Real-Time NSE / BSE Live Feed</span>
           </div>
-          <div class="text-slate-400 italic">
-            Slide finger / cursor to view OHLC & pattern
+          <div class="text-slate-400 italic hidden sm:block">
+            Directly connected to exchange live data
           </div>
         </div>
 
@@ -595,22 +596,23 @@
           </div>
         </div>
 
-        <!-- Suggested Risk Anchors in ₹ -->
-        <div class="p-2 rounded-xl bg-slate-900/40 border border-white/5 flex items-center justify-between text-xs">
-          <div>
-            <span class="text-[9px] text-slate-400 block">Invalidation (SL)</span>
-            <span id="agent3-stoploss" class="mono-font font-bold text-rose-400">₹--</span>
+        <!-- Suggested Risk Anchors in ₹ (2x2 grid on phone, 4 cols on desktop) -->
+        <div class="p-2 rounded-xl bg-slate-900/40 border border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          <div class="min-w-0">
+            <span class="text-[9px] text-slate-400 block truncate">Invalidation (SL)</span>
+            <span id="agent3-stoploss" class="mono-font font-bold text-rose-400 block truncate">₹--</span>
           </div>
-          <div>
-            <span class="text-[9px] text-slate-400 block">Target 1</span>
-            <span id="agent3-target1" class="mono-font font-bold text-emerald-400">₹--</span>
+          <div class="min-w-0">
+            <span class="text-[9px] text-slate-400 block truncate">Target 1</span>
+            <span id="agent3-target1" class="mono-font font-bold text-emerald-400 block truncate">₹--</span>
           </div>
-          <div>
-            <span class="text-[9px] text-slate-400 block">Risk : Reward</span>
-            <span id="agent3-rrr" class="mono-font font-bold text-purple-300">1 : --</span>
+          <div class="min-w-0">
+            <span class="text-[9px] text-slate-400 block truncate">Risk : Reward</span>
+            <span id="agent3-rrr" class="mono-font font-bold text-purple-300 block truncate">1 : --</span>
           </div>
-          <div class="text-[9px] text-slate-500 max-w-[80px] text-right italic leading-tight">
-            Strict probability
+          <div class="min-w-0 text-left sm:text-right">
+            <span class="text-[9px] text-slate-400 block truncate">Protocol</span>
+            <span class="text-[10px] text-slate-400 italic leading-tight block truncate">Strict SL</span>
           </div>
         </div>
 
