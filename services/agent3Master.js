@@ -219,12 +219,166 @@ Background agents ki scanning complete ho chuki hai:
   }
 
   /**
+   * Domain check: Verifies if the question is strictly about Stocks, Trading, Market, Budget, Money, or Investment
+   */
+  classifyQueryDomain(query, userMessage) {
+    const q = (query || '').toLowerCase().trim();
+    const raw = (userMessage || '').toUpperCase();
+
+    // 0. Friendly greetings
+    const greetings = ['hi', 'hello', 'hey', 'namaste', 'pranam', 'hola', 'good morning', 'good afternoon', 'good evening', 'who are you', 'kaun ho'];
+    if (greetings.includes(q) || greetings.some(g => q === g || q.startsWith(g + ' ') || q.startsWith(g + '!'))) {
+      return 'greeting';
+    }
+
+    // 1. Stock & Market Concepts
+    const stockTerms = [
+      'stock', 'stocks', 'share', 'shares', 'equity', 'equities', 'market', 'nifty', 'sensex', 'banknifty',
+      'bse', 'nse', 'ticker', 'chart', 'candle', 'candlestick', 'pattern', 'rsi', 'ema', 'sma', 'indicator',
+      'support', 'resistance', 'breakout', 'breakdown', 'target', 'stoploss', 'stop-loss', 'stop loss', 'sl',
+      'intraday', 'scalp', 'scalping', 'swing', 'delivery', 'holding', 'portfolio', 'volume', 'bull', 'bullish',
+      'bear', 'bearish', 'rally', 'crash', 'dip', 'dump', 'boom', 'options', 'option', 'call', 'put', 'futures',
+      'fno', 'derivative', 'ipo', 'dividend', 'pe ratio', 'eps', 'fii', 'dii', 'buy', 'sell', 'short', 'long',
+      'demat', 'order', 'girega', 'badhega', 'upar', 'neeche', 'aaj ka hal', 'kya chalra', 'kya chal raha',
+      'accuracy', 'prediction', 'self reflection'
+    ];
+
+    // 2. Budget Concepts
+    const budgetTerms = [
+      'budget', 'budgeting', 'kharcha', 'kharch', 'saving', 'savings', 'expense', 'expenses', 'spend', 'spending',
+      'allocate', 'allocation', 'monthly budget', 'financial plan', 'financial planning', 'emergency fund',
+      'salary', 'bachat', 'personal finance'
+    ];
+
+    // 3. Money Concepts
+    const moneyTerms = [
+      'money', 'paisa', 'paise', 'rupee', 'rupees', 'rs', 'inr', 'cash', 'cashflow', 'capital', 'wealth',
+      'net worth', 'networth', 'fund', 'funds', 'liquidity', 'profit', 'profits', 'loss', 'losses', 'earning',
+      'earnings', 'roi', 'cagr', 'interest', 'compound', 'compounding', 'debt', 'loan', 'emi', 'risk', 'reward',
+      'risk management', 'jaldi paise', 'kamai', 'kamana'
+    ];
+
+    // 4. Investment Concepts
+    const investmentTerms = [
+      'invest', 'invests', 'investing', 'investment', 'investments', 'investor', 'investors', 'mutual fund',
+      'mutual funds', 'mf', 'sip', 'lumpsum', 'index fund', 'etf', 'etfs', 'gold', 'sgb', 'fd', 'fixed deposit',
+      'ppf', 'asset', 'assets', 'diversify', 'diversification', 'returns', 'kahan lagau', 'kaha lagaye',
+      'kahan invest'
+    ];
+
+    // 5. Popular Indian stock symbols
+    const indianTickers = [
+      'RELIANCE', 'TATAMOTORS', 'TMPV', 'TMCV', 'HDFCBANK', 'ICICIBANK', 'TCS', 'INFY', 'SBIN', 'ITC',
+      'BHARTIARTL', 'LT', 'BAJFINANCE', 'MARUTI', 'WIPRO', 'ADANIENT', 'KOTAKBANK', 'AXISBANK', 'TITAN'
+    ];
+
+    for (const sym of indianTickers) {
+      if (raw.includes(sym)) return 'stock';
+    }
+
+    const checkAny = (arr) => arr.some(term => {
+      const regex = new RegExp(`(^|\\b|\\s)${term}(\\b|\\s|$)`, 'i');
+      return regex.test(q) || q.includes(term);
+    });
+
+    if (checkAny(budgetTerms)) return 'budget';
+    if (checkAny(investmentTerms)) return 'investment';
+    if (checkAny(moneyTerms)) return 'money';
+    if (checkAny(stockTerms)) return 'stock';
+
+    return 'out_of_domain';
+  }
+
+  /**
    * Interactive Chatbot Handler with natural Indian market understanding & direct answers
    */
   async handleUserChat(userMessage, contextSymbol = 'RELIANCE', geminiKey = null) {
     const query = (userMessage || '').trim().toLowerCase();
     const liveStream = require('./liveStream');
     const snapshot = liveStream.getSnapshot();
+
+    // 0. DOMAIN GATEKEEPER: Check if query is in domain (Stocks, Budget, Money, Investment)
+    const domain = this.classifyQueryDomain(query, userMessage);
+
+    // If out of domain, strictly refuse as instructed by user
+    if (domain === 'out_of_domain') {
+      return {
+        reply: `⚠️ **Sorry, I am not that chat bot what you think I am.**
+
+Main sirf **Stocks, Stock Market, Budget, Money aur Investments** ke analysis aur financial decision-making ke liye design kiya gaya hoon! 🌸
+
+Kripya mujhse:
+• Indian stocks (jaise RELIANCE, TATAMOTORS, HDFCBANK) ka candlestick analysis aur probability poochein
+• Intraday fast scalping setups (Entry, Target, Strict Stop-loss) poochein
+• Nifty 50, Sensex market breadth aur live boom/dump stocks poochein
+• Budgeting (50/30/20 rule), emergency fund aur smart investment planning ke bare mein sawal karein!`,
+        intent: 'out_of_domain'
+      };
+    }
+
+    // Friendly greeting
+    if (domain === 'greeting') {
+      return {
+        reply: `🌸 **Namaste! Main hoon Stock Knows Master.**
+
+Main aapka personal AI stock strategist aur financial decision analyst hoon.
+Aap mujhse:
+• **Stocks**: Kisi bhi Indian stock ka technical chart aur probability
+• **Intraday**: Jaldi profit nikalne ke live scalping setups
+• **Market Breadth**: Nifty 50 aur Sensex ka live pulse
+• **Budget & Investment**: Smart asset allocation aur capital protection rules
+
+Boliye, aaj aap kis stock ya investment setup ke bare mein jaan na chahte hain?`,
+        intent: 'greeting'
+      };
+    }
+
+    // Dedicated Budgeting Guidance
+    if (domain === 'budget' && !query.includes('fast profit') && !query.includes('scalp')) {
+      return {
+        reply: `💰 **Smart Budgeting & Cash Allocation Rules (50/30/20 Framework)**:
+
+1. **50% Needs (Zaroori Kharcha)**: Rent, grocery, EMI, health insurance, aur utilities.
+2. **30% Wants (Apne Shauk)**: Dining, entertainment, aur lifestyle.
+3. **20% Investment & Wealth Creation**: 
+   • Sabse pehle **6 months ka Emergency Fund** liquid fund ya FD mein banayein.
+   • Uske baad **Nifty 50 Index ETF / SIP** mein disciplined compounding shuru karein.
+
+💡 *Trading Golden Rule: Kabhi bhi emergency budget ya udhar ke paise se intraday trading mat karein. Sirf wohi risk capital market mein lagayein jiska plan ready ho!*`,
+        intent: 'budget'
+      };
+    }
+
+    // Dedicated Money & Capital Management Guidance
+    if (domain === 'money' && !query.includes('fast profit') && !query.includes('scalp') && !query.includes('kitne stocks') && !query.includes('sensex') && !query.includes('nifty')) {
+      return {
+        reply: `💵 **Money & Capital Management Golden Principles**:
+
+1. **Rule of 1% Risk**: Kisi bhi single trade mein apne total capital ka 1% se zyada risk kabhi mat lein.
+2. **Strict Risk-to-Reward (1 : 1.5+)**: Har trade mein target kam se kam stop-loss ka 1.5 guna hona chahiye.
+3. **Compounding Over Speculation**: ₹10,000 ko 15% CAGR se compound karne par 10 saal mein ₹40,000+ bante hain.
+4. **Emotional Discipline**: Loss hone par revenge trading na karein, aur profit hone par over-confidence se bachein.
+
+Boliye, kya aap kisi specific stock par risk-to-reward calculate karna chahte hain?`,
+        intent: 'money'
+      };
+    }
+
+    // Dedicated Investment Planning Guidance
+    if (domain === 'investment' && !query.includes('fast profit') && !query.includes('scalp') && !query.includes('sensex') && !query.includes('nifty')) {
+      return {
+        reply: `📈 **Smart Investment Allocation Strategy (Probabilistic Framework)**:
+
+Agar aap invest karna chahte hain, toh best balanced portfolio allocation:
+• **45% Core Foundation**: Nifty 50 Index Fund / Large Cap Bluechips (Steady 12-14% CAGR compounding).
+• **30% Growth Stocks**: Quality sectoral leaders (Tech, Banking, Auto) jab price EMA 20 ke paas pullback le.
+• **15% Intraday / Tactical**: High-probability candlestick breakout setups (strict stop-loss ke sath).
+• **10% Sovereign Gold / Cash Buffer**: Market crash ya sharp correction par dip buying ke liye.
+
+👉 *Upar diye gaye Boom & Dump radar se kisi bhi stock par click karein for deep multi-agent report!*`,
+        intent: 'investment'
+      };
+    }
 
     // 1. Fast Profit / Intraday Scalping Questions ("jaldi profit kaise nikalu", "intraday setup")
     if (
