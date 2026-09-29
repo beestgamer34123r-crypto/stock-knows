@@ -1,26 +1,62 @@
 /**
- * Stock Knows - Market Data Service
- * Fetches real-time OHLCV candlestick data and news from financial endpoints with robust caching and fallbacks.
+ * Stock Knows - Market Data Service (Indian Market NSE / BSE Focus)
+ * Real-time Indian indices (Nifty 50, Sensex, Bank Nifty), top NSE stocks,
+ * live Indian financial news (Google News / Moneycontrol / Livemint), and Boom/Dump forecaster.
  */
 
-// Simple in-memory cache to prevent spamming endpoints
 const cache = {
   candles: new Map(),
   news: new Map(),
-  summary: { data: null, timestamp: 0 }
+  summary: { data: null, timestamp: 0 },
+  boomDump: { data: null, timestamp: 0 }
 };
 
-const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
+const CACHE_TTL_MS = 60 * 1000;
+
+// Indian Market Symbol Mapping
+const INDIAN_SYMBOLS = {
+  // Indices
+  'NIFTY': { yahoo: '^NSEI', tv: 'NSE:NIFTY', name: 'Nifty 50', type: 'INDEX' },
+  'SENSEX': { yahoo: '^BSESN', tv: 'BSE:SENSEX', name: 'BSE Sensex', type: 'INDEX' },
+  'BANKNIFTY': { yahoo: '^NSEBANK', tv: 'NSE:BANKNIFTY', name: 'Nifty Bank', type: 'INDEX' },
+
+  // Top Indian Equities (BSE codes provide free real-time TradingView widgets)
+  'RELIANCE': { yahoo: 'RELIANCE.NS', tv: 'BSE:RELIANCE', name: 'Reliance Industries Ltd.', type: 'EQUITY' },
+  'TATAMOTORS': { yahoo: 'TATAMOTORS.NS', tv: 'BSE:TATAMOTORS', name: 'Tata Motors Ltd.', type: 'EQUITY' },
+  'HDFCBANK': { yahoo: 'HDFCBANK.NS', tv: 'BSE:HDFCBANK', name: 'HDFC Bank Ltd.', type: 'EQUITY' },
+  'ICICIBANK': { yahoo: 'ICICIBANK.NS', tv: 'BSE:ICICIBANK', name: 'ICICI Bank Ltd.', type: 'EQUITY' },
+  'TCS': { yahoo: 'TCS.NS', tv: 'BSE:TCS', name: 'Tata Consultancy Services', type: 'EQUITY' },
+  'INFY': { yahoo: 'INFY.NS', tv: 'BSE:INFY', name: 'Infosys Ltd.', type: 'EQUITY' },
+  'SBIN': { yahoo: 'SBIN.NS', tv: 'BSE:SBIN', name: 'State Bank of India', type: 'EQUITY' },
+  'ITC': { yahoo: 'ITC.NS', tv: 'BSE:ITC', name: 'ITC Ltd.', type: 'EQUITY' },
+  'BHARTIARTL': { yahoo: 'BHARTIARTL.NS', tv: 'BSE:BHARTIARTL', name: 'Bharti Airtel Ltd.', type: 'EQUITY' },
+  'LT': { yahoo: 'LT.NS', tv: 'BSE:LT', name: 'Larsen & Toubro Ltd.', type: 'EQUITY' },
+  'BAJFINANCE': { yahoo: 'BAJFINANCE.NS', tv: 'BSE:BAJFINANCE', name: 'Bajaj Finance Ltd.', type: 'EQUITY' },
+  'MARUTI': { yahoo: 'MARUTI.NS', tv: 'BSE:MARUTI', name: 'Maruti Suzuki India', type: 'EQUITY' }
+};
+
+function resolveSymbol(input = 'RELIANCE') {
+  const clean = input.trim().toUpperCase().replace('.NS', '').replace('.BO', '');
+  if (INDIAN_SYMBOLS[clean]) {
+    return { clean, ...INDIAN_SYMBOLS[clean] };
+  }
+
+  // Handle direct NSE ticker input
+  return {
+    clean,
+    yahoo: `${clean}.NS`,
+    tv: `NSE:${clean}`,
+    name: `${clean} (NSE)`,
+    type: 'EQUITY'
+  };
+}
 
 /**
- * Fetch candlestick data for a ticker symbol
- * @param {string} symbol - Stock ticker (e.g., NVDA, AAPL, TSLA, INFY.NS)
- * @param {string} interval - '1d', '1h', '15m', '5m'
- * @param {string} range - '1mo', '3mo', '6mo', '1y', '5d'
+ * Fetch candlestick data for an Indian stock / index
  */
-async function fetchCandles(symbol = 'NVDA', interval = '1d', range = '3mo') {
-  const cleanSymbol = symbol.trim().toUpperCase();
-  const cacheKey = `${cleanSymbol}_${interval}_${range}`;
+async function fetchCandles(symbol = 'RELIANCE', interval = '1d', range = '3mo') {
+  const resolved = resolveSymbol(symbol);
+  const cacheKey = `${resolved.yahoo}_${interval}_${range}`;
   const now = Date.now();
 
   if (cache.candles.has(cacheKey)) {
@@ -31,7 +67,7 @@ async function fetchCandles(symbol = 'NVDA', interval = '1d', range = '3mo') {
   }
 
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cleanSymbol)}?interval=${interval}&range=${range}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(resolved.yahoo)}?interval=${interval}&range=${range}`;
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -39,14 +75,14 @@ async function fetchCandles(symbol = 'NVDA', interval = '1d', range = '3mo') {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: Failed to fetch chart data for ${cleanSymbol}`);
+      throw new Error(`HTTP ${response.status}: Failed to fetch chart data for ${resolved.yahoo}`);
     }
 
     const data = await response.json();
     const result = data.chart && data.chart.result && data.chart.result[0];
 
     if (!result || !result.timestamp || result.timestamp.length === 0) {
-      throw new Error(`No chart data available for ${cleanSymbol}`);
+      throw new Error(`No chart data available for ${resolved.yahoo}`);
     }
 
     const meta = result.meta || {};
@@ -61,7 +97,6 @@ async function fetchCandles(symbol = 'NVDA', interval = '1d', range = '3mo') {
       const close = quotes.close[i];
       const volume = quotes.volume[i] || 0;
 
-      // Filter out invalid/null candles (e.g., market halts or holidays)
       if (open != null && high != null && low != null && close != null) {
         candles.push({
           time: new Date(timestamps[i] * 1000).toISOString().split('T')[0],
@@ -85,9 +120,12 @@ async function fetchCandles(symbol = 'NVDA', interval = '1d', range = '3mo') {
     const priceChangePercent = prevCandle.close ? (priceChange / prevCandle.close) * 100 : 0;
 
     const payload = {
-      symbol: cleanSymbol,
-      name: meta.longName || meta.shortName || cleanSymbol,
-      currency: meta.currency || 'USD',
+      symbol: resolved.clean,
+      yahooSymbol: resolved.yahoo,
+      tradingViewSymbol: resolved.tv,
+      name: resolved.name,
+      currency: 'INR',
+      currencySymbol: '₹',
       currentPrice: lastCandle.close,
       previousClose: prevCandle.close,
       priceChange: Number(priceChange.toFixed(2)),
@@ -97,91 +135,110 @@ async function fetchCandles(symbol = 'NVDA', interval = '1d', range = '3mo') {
         regularMarketPrice: meta.regularMarketPrice || lastCandle.close,
         regularMarketDayHigh: meta.regularMarketDayHigh || Math.max(...candles.map(c => c.high)),
         regularMarketDayLow: meta.regularMarketDayLow || Math.min(...candles.map(c => c.low)),
-        fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || null,
-        fiftyTwoWeekLow: meta.fiftyTwoWeekLow || null,
-        exchangeName: meta.exchangeName || 'NASDAQ',
-        marketState: meta.tradingPeriods ? 'REGULAR' : 'CLOSED'
+        exchangeName: resolved.tv.startsWith('BSE') ? 'BSE' : 'NSE',
+        marketState: 'REGULAR'
       }
     };
 
     cache.candles.set(cacheKey, { data: payload, timestamp: now });
     return payload;
   } catch (err) {
-    console.warn(`[marketData] Live fetch failed for ${cleanSymbol}: ${err.message}. Using synthetic fallback data.`);
-    return generateFallbackCandles(cleanSymbol, interval, range);
+    console.warn(`[marketData] Live fetch failed for ${resolved.yahoo}: ${err.message}. Using synthetic fallback data.`);
+    return generateFallbackCandles(resolved, interval, range);
   }
 }
 
 /**
- * Fetch latest news articles and sentiment mentions for a ticker
+ * Fetch live Indian financial news using Google News RSS for Indian stock market
  */
-async function fetchNews(symbol = 'NVDA') {
-  const cleanSymbol = symbol.trim().toUpperCase();
-  const cacheKey = `news_${cleanSymbol}`;
+async function fetchNews(symbol = 'RELIANCE') {
+  const resolved = resolveSymbol(symbol);
+  const cacheKey = `news_${resolved.clean}`;
   const now = Date.now();
 
   if (cache.news.has(cacheKey)) {
     const cached = cache.news.get(cacheKey);
-    if (now - cached.timestamp < CACHE_TTL_MS) {
+    if (now - cached.timestamp < CACHE_TTL_MS * 2) {
       return cached.data;
     }
   }
 
   try {
-    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(cleanSymbol)}&quotesCount=1&newsCount=12`;
-    const response = await fetch(url, {
+    const query = encodeURIComponent(`${resolved.name} stock share price NSE BSE`);
+    const url = `https://news.google.com/rss/search?q=${query}&hl=en-IN&gl=IN&ceid=IN:en`;
+
+    const res = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: Failed to fetch news`);
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching news feed`);
+
+    const xml = await res.text();
+    const items = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+
+    while ((match = itemRegex.exec(xml)) !== null && items.length < 8) {
+      const itemContent = match[1];
+      const titleMatch = itemContent.match(/<title>(.*?)<\/title>/);
+      const linkMatch = itemContent.match(/<link>(.*?)<\/link>/);
+      const pubDateMatch = itemContent.match(/<pubDate>(.*?)<\/pubDate>/);
+      const sourceMatch = itemContent.match(/<source[^>]*>(.*?)<\/source>/);
+
+      if (titleMatch) {
+        let cleanTitle = titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&');
+        // Remove trailing source from Google News title (e.g. "... - Moneycontrol")
+        const publisher = sourceMatch ? sourceMatch[1] : (cleanTitle.split(' - ').pop() || 'Financial Press');
+        if (cleanTitle.includes(' - ')) {
+          cleanTitle = cleanTitle.split(' - ').slice(0, -1).join(' - ');
+        }
+
+        items.push({
+          id: `news-${items.length}`,
+          title: cleanTitle,
+          publisher,
+          link: linkMatch ? linkMatch[1] : `https://www.google.com/search?q=${encodeURIComponent(resolved.name + ' share price')}`,
+          publishedAt: pubDateMatch ? new Date(pubDateMatch[1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'
+        });
+      }
     }
 
-    const data = await response.json();
-    const rawNews = data.news || [];
-
-    const articles = rawNews.map((item, idx) => ({
-      id: item.uuid || `news-${idx}`,
-      title: item.title,
-      publisher: item.publisher || 'Financial Press',
-      link: item.link,
-      publishedAt: item.providerPublishTime ? new Date(item.providerPublishTime * 1000).toLocaleString() : 'Recently',
-      thumbnail: item.thumbnail?.resolutions?.[0]?.url || null
-    }));
-
-    if (articles.length === 0) {
-      return generateFallbackNews(cleanSymbol);
+    if (items.length === 0) {
+      return generateFallbackNews(resolved.clean);
     }
 
-    cache.news.set(cacheKey, { data: articles, timestamp: now });
-    return articles;
+    cache.news.set(cacheKey, { data: items, timestamp: now });
+    return items;
   } catch (err) {
-    console.warn(`[marketData] News fetch failed for ${cleanSymbol}: ${err.message}. Using generated financial news.`);
-    return generateFallbackNews(cleanSymbol);
+    console.warn(`[marketData] News fetch failed for ${resolved.clean}: ${err.message}. Using Indian financial fallbacks.`);
+    return generateFallbackNews(resolved.clean);
   }
 }
 
 /**
- * Get comprehensive market summary (top gainers, active stocks, indices)
+ * Get comprehensive Indian market summary (Nifty 50, Sensex, Bank Nifty + Top Active Stocks)
  */
 async function getMarketSummary() {
   const now = Date.now();
-  if (cache.summary.data && now - cache.summary.timestamp < CACHE_TTL_MS * 2) {
+  if (cache.summary.data && now - cache.summary.timestamp < CACHE_TTL_MS) {
     return cache.summary.data;
   }
 
-  const trackedSymbols = ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'AMZN', 'GOOGL', 'META', 'AMD'];
+  const symbolsToTrack = ['NIFTY', 'SENSEX', 'BANKNIFTY', 'RELIANCE', 'TATAMOTORS', 'HDFCBANK', 'ICICIBANK', 'TCS', 'INFY', 'SBIN', 'ITC'];
   const results = [];
 
-  for (const sym of trackedSymbols) {
+  for (const sym of symbolsToTrack) {
     try {
       const data = await fetchCandles(sym, '1d', '5d');
       results.push({
         symbol: data.symbol,
         name: data.name,
+        tvSymbol: data.tradingViewSymbol,
+        isIndex: sym === 'NIFTY' || sym === 'SENSEX' || sym === 'BANKNIFTY',
         price: data.currentPrice,
+        currencySymbol: '₹',
         change: data.priceChange,
         changePercent: data.priceChangePercent,
         volume: data.candles[data.candles.length - 1]?.volume || 0
@@ -191,19 +248,27 @@ async function getMarketSummary() {
     }
   }
 
-  // Sort by change percent descending to identify top gainers
-  const topGainers = [...results].sort((a, b) => b.changePercent - a.changePercent);
+  const indices = results.filter(r => r.isIndex);
+  const equities = results.filter(r => !r.isIndex);
+
+  const topGainers = [...equities].sort((a, b) => b.changePercent - a.changePercent);
+  const topDecliners = [...equities].sort((a, b) => a.changePercent - b.changePercent);
+
+  const nifty = indices.find(i => i.symbol === 'NIFTY');
+  const sensex = indices.find(i => i.symbol === 'SENSEX');
+
   const bullishCount = results.filter(r => r.changePercent > 0).length;
-  const marketMood = bullishCount >= 5 ? 'Strongly Bullish 🚀' : bullishCount >= 4 ? 'Mildly Bullish 🌿' : 'Mixed / Consolidating ⚖️';
+  const marketMood = bullishCount >= 6 ? 'Strongly Bullish 🚀 (Bulls in Full Charge)' : bullishCount >= 4 ? 'Mildly Bullish 🌿 (Selective Buying)' : 'Cautious / Consolidating ⚖️ (FII Profit Booking)';
 
   const summary = {
-    updatedAt: new Date().toLocaleTimeString(),
+    updatedAt: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
     marketMood,
-    bullishCount,
-    totalTracked: results.length,
+    indices,
+    niftyStatus: nifty ? `Nifty 50 @ ₹${nifty.price.toFixed(2)} (${nifty.changePercent >= 0 ? '+' : ''}${nifty.changePercent.toFixed(2)}%)` : 'Nifty 50 Active',
+    sensexStatus: sensex ? `Sensex @ ₹${sensex.price.toFixed(2)} (${sensex.changePercent >= 0 ? '+' : ''}${sensex.changePercent.toFixed(2)}%)` : 'Sensex Active',
     stocks: results,
     topGainers: topGainers.slice(0, 4),
-    topDecliners: [...topGainers].reverse().slice(0, 3)
+    topDecliners: topDecliners.slice(0, 3)
   };
 
   cache.summary = { data: summary, timestamp: now };
@@ -211,21 +276,89 @@ async function getMarketSummary() {
 }
 
 /**
- * Fallback generator for candles if endpoint is unreachable
+ * Generate Today's Boom & Dump Forecast for Indian Stocks based on live news & catalysts
  */
-function generateFallbackCandles(symbol, interval, range) {
-  const basePriceMap = {
-    NVDA: 135.5,
-    AAPL: 232.0,
-    TSLA: 260.4,
-    MSFT: 428.1,
-    AMZN: 188.3,
-    GOOGL: 165.7,
-    META: 585.0,
-    AMD: 155.2
+async function getBoomAndDumpForecast() {
+  const now = Date.now();
+  if (cache.boomDump.data && now - cache.boomDump.timestamp < CACHE_TTL_MS * 2) {
+    return cache.boomDump.data;
+  }
+
+  // Pre-screen top Indian movers
+  const candidateSymbols = ['TATAMOTORS', 'RELIANCE', 'ICICIBANK', 'INFY', 'HDFCBANK', 'TCS', 'SBIN', 'ITC'];
+  const boomList = [];
+  const dumpList = [];
+
+  for (const sym of candidateSymbols) {
+    try {
+      const candles = await fetchCandles(sym, '1d', '1mo');
+      const news = await fetchNews(sym);
+
+      const agent1 = require('./agent1Candle').analyze(candles.candles, sym);
+      const agent2 = require('./agent2News').analyze(news, sym);
+
+      const bullishProb = Math.round(agent1.probabilities.bullish * 0.55 + agent2.probabilities.bullish * 0.45);
+      const bearishProb = Math.round(agent1.probabilities.bearish * 0.55 + agent2.probabilities.bearish * 0.45);
+
+      const item = {
+        symbol: sym,
+        name: candles.name,
+        price: candles.currentPrice,
+        changePercent: candles.priceChangePercent,
+        bullishProb,
+        bearishProb,
+        catalyst: news[0]?.title || 'Technical volume breakout on NSE',
+        keyReason: agent2.buyingPressure,
+        tradingViewSymbol: candles.tradingViewSymbol
+      };
+
+      if (bullishProb >= 58) {
+        boomList.push(item);
+      } else if (bearishProb >= 52) {
+        dumpList.push(item);
+      } else {
+        boomList.push(item); // fallback
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Sort boom by bullishProb descending, dump by bearishProb descending
+  boomList.sort((a, b) => b.bullishProb - a.bullishProb);
+  dumpList.sort((a, b) => b.bearishProb - a.bearishProb);
+
+  const forecast = {
+    updatedAt: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
+    boomStocks: boomList.slice(0, 3),
+    dumpStocks: dumpList.slice(0, 2),
+    instruction: '👉 Aaj ki news aur candlestick patterns ke hisaab se upar diye gaye stocks mein se kisi par bhi click karo. Candle Scout aur News Radar turant uski deep report Agent 3 ko de denge!'
   };
 
-  let price = basePriceMap[symbol] || 100.0;
+  cache.boomDump = { data: forecast, timestamp: now };
+  return forecast;
+}
+
+function generateFallbackCandles(resolved, interval, range) {
+  const basePriceMap = {
+    NIFTY: 22800.0,
+    SENSEX: 73000.0,
+    BANKNIFTY: 48500.0,
+    RELIANCE: 2920.0,
+    TATAMOTORS: 985.0,
+    HDFCBANK: 1470.0,
+    ICICIBANK: 1110.0,
+    TCS: 3880.0,
+    INFY: 1530.0,
+    SBIN: 810.0,
+    ITC: 430.0,
+    BHARTIARTL: 1320.0,
+    LT: 3600.0,
+    BAJFINANCE: 7100.0,
+    MARUTI: 12500.0
+  };
+
+  let price = basePriceMap[resolved.clean] || 1000.0;
   const count = range === '1mo' ? 22 : range === '3mo' ? 64 : 30;
   const candles = [];
   const now = Date.now();
@@ -234,12 +367,12 @@ function generateFallbackCandles(symbol, interval, range) {
   for (let i = count; i >= 0; i--) {
     const timestamp = now - i * dayMs;
     const dateStr = new Date(timestamp).toISOString().split('T')[0];
-    const fluctuation = (Math.random() - 0.48) * (price * 0.035);
+    const fluctuation = (Math.random() - 0.47) * (price * 0.02);
     const open = price;
-    const close = Math.max(5, price + fluctuation);
-    const high = Math.max(open, close) + Math.random() * (price * 0.015);
-    const low = Math.min(open, close) - Math.random() * (price * 0.015);
-    const volume = Math.floor(1000000 + Math.random() * 50000000);
+    const close = Math.max(10, price + fluctuation);
+    const high = Math.max(open, close) + Math.random() * (price * 0.01);
+    const low = Math.min(open, close) - Math.random() * (price * 0.01);
+    const volume = Math.floor(500000 + Math.random() * 20000000);
 
     candles.push({
       time: dateStr,
@@ -260,9 +393,12 @@ function generateFallbackCandles(symbol, interval, range) {
   const priceChangePercent = (priceChange / prevCandle.close) * 100;
 
   return {
-    symbol,
-    name: `${symbol} Inc.`,
-    currency: 'USD',
+    symbol: resolved.clean,
+    yahooSymbol: resolved.yahoo,
+    tradingViewSymbol: resolved.tv,
+    name: resolved.name,
+    currency: 'INR',
+    currencySymbol: '₹',
     currentPrice: lastCandle.close,
     previousClose: prevCandle.close,
     priceChange: Number(priceChange.toFixed(2)),
@@ -272,29 +408,26 @@ function generateFallbackCandles(symbol, interval, range) {
       regularMarketPrice: lastCandle.close,
       regularMarketDayHigh: Math.max(...candles.map(c => c.high)),
       regularMarketDayLow: Math.min(...candles.map(c => c.low)),
-      exchangeName: 'NASDAQ',
+      exchangeName: 'NSE',
       isSynthetic: true
     }
   };
 }
 
-/**
- * Fallback generator for realistic news articles
- */
 function generateFallbackNews(symbol) {
   const templates = [
-    { title: `${symbol} Secures Major Institutional Accumulation as Volume Surges`, publisher: 'Bloomberg Markets', sentiment: 'positive' },
-    { title: `Analysts Raise Price Targets on ${symbol} Following Strong Demand Trends`, publisher: 'Reuters Finance', sentiment: 'positive' },
-    { title: `Key Support Level Tested by ${symbol}: Technical Traders Eye Breakout`, publisher: 'TradingView Pulse', sentiment: 'neutral' },
-    { title: `Retail Investor Sentiment Climbs For ${symbol} Ahead of Sector Updates`, publisher: 'Benzinga', sentiment: 'positive' },
-    { title: `Macro Inflation Headwinds Create Selective Pressure on Tech & ${symbol}`, publisher: 'Wall Street Journal', sentiment: 'negative' }
+    { title: `${symbol} sees massive DII accumulation as Nifty consolidates near record highs`, publisher: 'Moneycontrol', sentiment: 'positive' },
+    { title: `Brokerages issue Buy rating on ${symbol} with target upgrade on strong Q2 order book`, publisher: 'Economic Times', sentiment: 'positive' },
+    { title: `FII flow updates: Institutional funds position in ${symbol} ahead of monthly expiry`, publisher: 'Livemint', sentiment: 'neutral' },
+    { title: `Technical breakout on NSE: ${symbol} crosses 20 EMA with above-average trading volume`, publisher: 'Business Standard', sentiment: 'positive' },
+    { title: `Global market cues keep Indian IT & Tech on edge: Profit booking seen in ${symbol}`, publisher: 'NDTV Profit', sentiment: 'negative' }
   ];
 
   return templates.map((t, idx) => ({
-    id: `fallback-${idx}`,
+    id: `fallback-in-${idx}`,
     title: t.title,
     publisher: t.publisher,
-    link: `https://finance.yahoo.com/quote/${symbol}`,
+    link: `https://www.google.com/search?q=${encodeURIComponent(symbol + ' share news')}`,
     publishedAt: `${idx * 2 + 1} hours ago`
   }));
 }
@@ -302,5 +435,8 @@ function generateFallbackNews(symbol) {
 module.exports = {
   fetchCandles,
   fetchNews,
-  getMarketSummary
+  getMarketSummary,
+  getBoomAndDumpForecast,
+  resolveSymbol,
+  INDIAN_SYMBOLS
 };

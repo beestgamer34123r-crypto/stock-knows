@@ -1,37 +1,60 @@
 /**
- * Stock Knows - Frontend Controller
- * Connects the 3 AI Agents to the Cute & Eye-Friendly UI.
+ * Stock Knows - Frontend Controller (Indian Stock Market NSE / BSE)
+ * Connects TradingView Platform Candlesticks, Boom/Dump Radar, Live Watchlist,
+ * and Agent 3 Self-Reflection Accuracy Tracker.
  */
 
 // State Management
 const state = {
-  currentSymbol: 'NVDA',
+  currentSymbol: 'RELIANCE',
+  currentTvSymbol: 'NSE:RELIANCE',
   currentTimeframe: '1d',
   currentRange: '3mo',
+  chartMode: 'tv', // 'tv' or 'patterns'
   chart: null,
   marketSummary: null,
+  boomForecast: null,
+  accuracyInfo: null,
   geminiKey: localStorage.getItem('stock_knows_gemini_key') || '',
   theme: localStorage.getItem('stock_knows_theme') || 'dark',
-  isAnalyzing: false
+  isAnalyzing: false,
+  tvWidgetInstance: null
 };
+
+// Safe DOM Setters
+function safeText(el, text) {
+  if (el) el.innerText = text;
+}
+function safeWidth(el, width) {
+  if (el) el.style.width = width;
+}
 
 // DOM Elements
 const elements = {
-  // Navigation & Search
   stockSearchInput: document.getElementById('stock-search-input'),
   btnSearchStock: document.getElementById('btn-search-stock'),
-  tickerTape: document.getElementById('ticker-tape'),
+  indicesBar: document.getElementById('indices-bar'),
+  liveWatchlist: document.getElementById('live-watchlist'),
   btnSummarizeMarket: document.getElementById('btn-summarize-market'),
+  btnOpenAccuracy: document.getElementById('btn-open-accuracy'),
+  badgeAccuracyRate: document.getElementById('badge-accuracy-rate'),
   btnToggleTheme: document.getElementById('btn-toggle-theme'),
-  btnOpenSettings: document.getElementById('btn-open-settings'),
-  
+
+  // Boom & Dump Forecast
+  boomStocksList: document.getElementById('boom-stocks-list'),
+  dumpStocksList: document.getElementById('dump-stocks-list'),
+  forecastUpdatedTime: document.getElementById('forecast-updated-time'),
+
   // Stock Overview
   stockSymbolDisplay: document.getElementById('stock-symbol-display'),
   stockNameDisplay: document.getElementById('stock-name-display'),
   stockPriceDisplay: document.getElementById('stock-price-display'),
   stockChangeDisplay: document.getElementById('stock-change-display'),
-  timeframeButtons: document.querySelectorAll('.btn-timeframe'),
-  
+  btnShowTv: document.getElementById('btn-show-tv'),
+  btnShowPatterns: document.getElementById('btn-show-patterns'),
+  tvChartContainer: document.getElementById('tv-chart-container'),
+  canvasChartContainer: document.getElementById('canvas-chart-container'),
+
   // Agent 1: Candle Scout
   agent1BullishProb: document.getElementById('agent1-bullish-prob'),
   agent1BearishProb: document.getElementById('agent1-bearish-prob'),
@@ -44,7 +67,6 @@ const elements = {
   agent1Ema20Value: document.getElementById('agent1-ema20-value'),
   agent1SupportValue: document.getElementById('agent1-support-value'),
   agent1ResistanceValue: document.getElementById('agent1-resistance-value'),
-  agent1VolumeSurge: document.getElementById('agent1-volume-surge'),
 
   // Agent 2: News Radar
   agent2BullishProb: document.getElementById('agent2-bullish-prob'),
@@ -54,7 +76,6 @@ const elements = {
   agent2BarBearish: document.getElementById('agent2-bar-bearish'),
   agent2BarNeutral: document.getElementById('agent2-bar-neutral'),
   agent2BuyingPressure: document.getElementById('agent2-buying-pressure'),
-  agent2RetailMood: document.getElementById('agent2-retail-mood'),
   agent2ArticlesList: document.getElementById('agent2-articles-list'),
 
   // Agent 3: Master Decision
@@ -80,13 +101,13 @@ const elements = {
   btnSendChat: document.getElementById('btn-send-chat'),
   agentThinkingIndicator: document.getElementById('agent-thinking-indicator'),
 
-  // Settings Modal
-  settingsModal: document.getElementById('settings-modal'),
-  inputGeminiKey: document.getElementById('input-gemini-key'),
-  btnSaveSettings: document.getElementById('btn-save-settings'),
-  btnCloseSettings: document.getElementById('btn-close-settings'),
+  // Accuracy Modal
+  accuracyModal: document.getElementById('accuracy-modal'),
+  accuracyModalContent: document.getElementById('accuracy-modal-content'),
+  btnCloseAccuracy: document.getElementById('btn-close-accuracy'),
+  btnRefreshAccuracy: document.getElementById('btn-refresh-accuracy'),
 
-  // Market Summary Modal
+  // Summary Modal
   summaryModal: document.getElementById('summary-modal'),
   summaryContent: document.getElementById('summary-content'),
   btnCloseSummary: document.getElementById('btn-close-summary')
@@ -94,79 +115,57 @@ const elements = {
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', () => {
-  // Apply saved theme
   applyTheme(state.theme);
 
-  // Initialize Candlestick Chart
+  // Initialize Canvas Chart engine for pattern overlays
   state.chart = new CandlestickChart('candle-canvas', 'chart-tooltip');
 
-  // Load Initial Market Pulse & NVDA analysis
+  // Load initial data
   loadMarketSummary();
+  loadAccuracyTracker();
   runAnalysis(state.currentSymbol);
 
   // Bind Event Listeners
   initListeners();
+
+  // Auto-refresh live watchlist every 30 seconds
+  setInterval(() => {
+    loadMarketSummary(true);
+  }, 30000);
 });
 
 function initListeners() {
-  // Search Bar
-  elements.btnSearchStock.addEventListener('click', handleSearch);
-  elements.stockSearchInput.addEventListener('keydown', (e) => {
+  // Search
+  elements.btnSearchStock?.addEventListener('click', handleSearch);
+  elements.stockSearchInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSearch();
   });
 
-  // Timeframe buttons
-  elements.timeframeButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      elements.timeframeButtons.forEach(b => b.classList.remove('bg-purple-600', 'text-white'));
-      elements.timeframeButtons.forEach(b => b.classList.add('text-slate-400'));
-      btn.classList.add('bg-purple-600', 'text-white');
-      btn.classList.remove('text-slate-400');
+  // Chart Switcher (TradingView vs Pattern Canvas)
+  elements.btnShowTv?.addEventListener('click', () => switchChartMode('tv'));
+  elements.btnShowPatterns?.addEventListener('click', () => switchChartMode('patterns'));
 
-      const tf = btn.dataset.timeframe;
-      const rng = btn.dataset.range;
-      state.currentTimeframe = tf;
-      state.currentRange = rng;
-      runAnalysis(state.currentSymbol);
-    });
-  });
+  // Modals
+  elements.btnSummarizeMarket?.addEventListener('click', showMarketSummaryModal);
+  elements.btnCloseSummary?.addEventListener('click', () => elements.summaryModal.classList.add('hidden'));
 
-  // Summarize Market button
-  elements.btnSummarizeMarket.addEventListener('click', showMarketSummaryModal);
+  elements.btnOpenAccuracy?.addEventListener('click', showAccuracyModal);
+  elements.btnCloseAccuracy?.addEventListener('click', () => elements.accuracyModal.classList.add('hidden'));
+  elements.btnRefreshAccuracy?.addEventListener('click', loadAccuracyTracker);
 
-  // Theme toggle
-  elements.btnToggleTheme.addEventListener('click', () => {
+  // Theme Toggle
+  elements.btnToggleTheme?.addEventListener('click', () => {
     const nextTheme = state.theme === 'dark' ? 'light' : 'dark';
     applyTheme(nextTheme);
   });
 
-  // Settings Modal
-  elements.btnOpenSettings.addEventListener('click', () => {
-    elements.inputGeminiKey.value = state.geminiKey;
-    elements.settingsModal.classList.remove('hidden');
-  });
-  elements.btnCloseSettings.addEventListener('click', () => {
-    elements.settingsModal.classList.add('hidden');
-  });
-  elements.btnSaveSettings.addEventListener('click', () => {
-    state.geminiKey = elements.inputGeminiKey.value.trim();
-    localStorage.setItem('stock_knows_gemini_key', state.geminiKey);
-    elements.settingsModal.classList.add('hidden');
-    appendChatMessage('Agent 3', '⚙️ Settings saved successfully! Optional Gemini AI is ' + (state.geminiKey ? 'Active ✨' : 'Disabled (using built-in engine).'));
-  });
-
-  // Market Summary Modal Close
-  elements.btnCloseSummary.addEventListener('click', () => {
-    elements.summaryModal.classList.add('hidden');
-  });
-
-  // Chat Send
-  elements.btnSendChat.addEventListener('click', handleUserSendMessage);
-  elements.chatInput.addEventListener('keydown', (e) => {
+  // Chat
+  elements.btnSendChat?.addEventListener('click', handleUserSendMessage);
+  elements.chatInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleUserSendMessage();
   });
 
-  // Quick Chat Prompts
+  // Quick Prompt Chips
   document.querySelectorAll('.quick-prompt-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       elements.chatInput.value = btn.dataset.prompt.replace('{SYMBOL}', state.currentSymbol);
@@ -183,78 +182,309 @@ function applyTheme(theme) {
   if (theme === 'light') {
     root.classList.add('light');
     root.classList.remove('dark');
-    elements.btnToggleTheme.innerHTML = '🌙';
+    if (elements.btnToggleTheme) elements.btnToggleTheme.innerHTML = '🌙';
   } else {
     root.classList.add('dark');
     root.classList.remove('light');
-    elements.btnToggleTheme.innerHTML = '☀️';
+    if (elements.btnToggleTheme) elements.btnToggleTheme.innerHTML = '☀️';
   }
 
-  if (state.chart) {
-    state.chart.draw();
+  // Reload TradingView widget with current theme
+  renderTradingViewWidget(state.currentTvSymbol, theme);
+  if (state.chart) state.chart.draw();
+}
+
+function switchChartMode(mode) {
+  state.chartMode = mode;
+  if (mode === 'tv') {
+    elements.tvChartContainer.classList.remove('hidden');
+    elements.canvasChartContainer.classList.add('hidden');
+    elements.btnShowTv.classList.replace('text-slate-400', 'text-white');
+    elements.btnShowTv.classList.add('bg-purple-600');
+    elements.btnShowPatterns.classList.remove('bg-purple-600', 'text-white');
+    elements.btnShowPatterns.classList.add('text-slate-400');
+    renderTradingViewWidget(state.currentTvSymbol, state.theme);
+  } else {
+    elements.tvChartContainer.classList.add('hidden');
+    elements.canvasChartContainer.classList.remove('hidden');
+    elements.btnShowPatterns.classList.replace('text-slate-400', 'text-white');
+    elements.btnShowPatterns.classList.add('bg-purple-600');
+    elements.btnShowTv.classList.remove('bg-purple-600', 'text-white');
+    elements.btnShowTv.classList.add('text-slate-400');
+    if (state.chart) state.chart.resizeAndDraw();
+  }
+}
+
+/**
+ * Embed TradingView Real-Time Candlestick Chart
+ */
+function renderTradingViewWidget(tvSymbol = 'NSE:RELIANCE', theme = 'dark') {
+  const container = document.getElementById('tradingview_widget');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (window.TradingView) {
+    try {
+      new window.TradingView.widget({
+        "autosize": true,
+        "symbol": tvSymbol,
+        "interval": "D",
+        "timezone": "Asia/Kolkata",
+        "theme": theme === 'light' ? 'light' : 'dark',
+        "style": "1", // 1 = Candlestick chart
+        "locale": "in",
+        "toolbar_bg": theme === 'light' ? '#f8fafc' : '#0b0f19',
+        "enable_publishing": false,
+        "allow_symbol_change": true,
+        "hide_side_toolbar": false,
+        "container_id": "tradingview_widget"
+      });
+    } catch (e) {
+      console.warn('TradingView widget initialization:', e.message);
+    }
   }
 }
 
 function handleSearch() {
   const query = elements.stockSearchInput.value.trim().toUpperCase();
   if (query) {
-    state.currentSymbol = query;
     elements.stockSearchInput.value = '';
-    runAnalysis(state.currentSymbol);
+    runAnalysis(query);
   }
 }
 
 /**
- * Load Top Ticker Carousel
+ * Load Indian Market Indices and Live Watchlist
  */
-async function loadMarketSummary() {
+async function loadMarketSummary(isBackgroundPoll = false) {
   try {
     const res = await fetch('/api/market-summary');
     const data = await res.json();
 
     if (data.success && data.summary) {
-      state.marketSummary = data;
-      renderTickerTape(data.summary.stocks);
+      state.marketSummary = data.summary;
+      state.boomForecast = data.boomForecast;
+
+      renderIndicesBar(data.summary.indices);
+      renderLiveWatchlist(data.summary.stocks);
+      renderBoomAndDump(data.boomForecast);
     }
   } catch (err) {
-    console.warn('Failed to load market summary:', err);
+    console.warn('Error loading market summary:', err);
   }
 }
 
-function renderTickerTape(stocks = []) {
-  if (!elements.tickerTape) return;
-  elements.tickerTape.innerHTML = '';
+function renderIndicesBar(indices = []) {
+  if (!elements.indicesBar) return;
+  elements.indicesBar.innerHTML = '';
+
+  indices.forEach(idx => {
+    const isUp = idx.changePercent >= 0;
+    const item = document.createElement('div');
+    item.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 font-mono text-xs cursor-pointer hover:border-purple-500 transition whitespace-nowrap';
+    item.innerHTML = `
+      <span class="font-bold text-slate-200">${idx.name}</span>
+      <span class="text-slate-100 font-semibold">₹${idx.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+      <span class="text-[11px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '▲ +' : '▼ '}${idx.changePercent.toFixed(2)}%</span>
+    `;
+
+    item.addEventListener('click', () => {
+      runAnalysis(idx.symbol);
+    });
+
+    elements.indicesBar.appendChild(item);
+  });
+}
+
+function renderLiveWatchlist(stocks = []) {
+  if (!elements.liveWatchlist) return;
+  elements.liveWatchlist.innerHTML = '';
 
   stocks.forEach(stock => {
     const isUp = stock.changePercent >= 0;
-    const chip = document.createElement('div');
-    chip.className = `ticker-chip ${stock.symbol === state.currentSymbol ? 'active' : ''}`;
-    chip.innerHTML = `
-      <span class="font-bold">${stock.symbol}</span>
-      <span class="text-xs text-slate-400 font-mono">$${stock.price.toFixed(2)}</span>
-      <span class="text-xs font-semibold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '+' : ''}${stock.changePercent.toFixed(2)}%</span>
+    const card = document.createElement('button');
+    const isActive = stock.symbol === state.currentSymbol;
+
+    card.className = `w-full p-2.5 rounded-xl border text-left flex justify-between items-center transition ${
+      isActive
+        ? 'bg-purple-900/25 border-purple-500/60 shadow-md'
+        : 'bg-slate-900/50 hover:bg-slate-900 border-slate-800 hover:border-purple-500/40'
+    }`;
+
+    card.innerHTML = `
+      <div>
+        <div class="flex items-center gap-1.5 font-bold text-xs text-white">
+          <span class="w-2 h-2 rounded-full ${isUp ? 'bg-emerald-400' : 'bg-rose-400'}"></span>
+          <span>${stock.symbol}</span>
+        </div>
+        <div class="text-[10px] text-slate-400 truncate max-w-[110px]">${stock.name}</div>
+      </div>
+      <div class="text-right font-mono">
+        <div class="text-xs font-bold text-white">₹${stock.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+        <div class="text-[10px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">
+          ${isUp ? '+' : ''}${stock.changePercent.toFixed(2)}%
+        </div>
+      </div>
     `;
 
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.ticker-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      state.currentSymbol = stock.symbol;
+    card.addEventListener('click', () => {
       runAnalysis(stock.symbol);
     });
 
-    elements.tickerTape.appendChild(chip);
+    elements.liveWatchlist.appendChild(card);
   });
 }
 
 /**
- * Core Multi-Agent Analysis Execution
+ * Render Today's Boom & Dump Forecast at the top
  */
-async function runAnalysis(symbol = 'NVDA') {
+function renderBoomAndDump(forecast) {
+  if (!forecast) return;
+
+  if (forecast.updatedAt) {
+    safeText(elements.forecastUpdatedTime, `Updated: Today ${forecast.updatedAt}`);
+  }
+
+  // 1. Render Boom Stocks
+  if (elements.boomStocksList) {
+    elements.boomStocksList.innerHTML = '';
+    (forecast.boomStocks || []).forEach(stock => {
+      const isUp = stock.changePercent >= 0;
+      const row = document.createElement('div');
+      row.className = 'p-2 rounded-xl bg-slate-900/70 hover:bg-purple-950/40 border border-emerald-500/20 hover:border-purple-500/50 cursor-pointer transition flex items-center justify-between';
+      row.innerHTML = `
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm text-white">${stock.symbol}</span>
+            <span class="text-[10px] px-2 py-0.2 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              ${stock.bullishProb}% Boom Prob 🚀
+            </span>
+          </div>
+          <div class="text-[11px] text-slate-400 truncate max-w-[280px]">${stock.catalyst}</div>
+        </div>
+        <div class="text-right font-mono">
+          <div class="text-xs font-bold text-white">₹${stock.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+          <div class="text-[10px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '+' : ''}${stock.changePercent.toFixed(2)}%</div>
+        </div>
+      `;
+
+      row.addEventListener('click', () => {
+        runAnalysis(stock.symbol);
+        appendChatMessage('User', `Analyze ${stock.symbol} for me`);
+        appendChatMessage('Stock Knows Master', `Switching to **${stock.symbol}** (${stock.bullishProb}% Bullish Boom probability). Candle Scout aur News Radar ki live analysis load ho rahi hai!`);
+      });
+
+      elements.boomStocksList.appendChild(row);
+    });
+  }
+
+  // 2. Render Dump Stocks
+  if (elements.dumpStocksList) {
+    elements.dumpStocksList.innerHTML = '';
+    (forecast.dumpStocks || []).forEach(stock => {
+      const isUp = stock.changePercent >= 0;
+      const row = document.createElement('div');
+      row.className = 'p-2 rounded-xl bg-slate-900/70 hover:bg-rose-950/40 border border-rose-500/20 hover:border-rose-500/50 cursor-pointer transition flex items-center justify-between';
+      row.innerHTML = `
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm text-white">${stock.symbol}</span>
+            <span class="text-[10px] px-2 py-0.2 rounded-full font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              ${stock.bearishProb}% Dump / Risk ⚠️
+            </span>
+          </div>
+          <div class="text-[11px] text-slate-400 truncate max-w-[280px]">${stock.catalyst}</div>
+        </div>
+        <div class="text-right font-mono">
+          <div class="text-xs font-bold text-white">₹${stock.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+          <div class="text-[10px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '+' : ''}${stock.changePercent.toFixed(2)}%</div>
+        </div>
+      `;
+
+      row.addEventListener('click', () => {
+        runAnalysis(stock.symbol);
+        appendChatMessage('User', `Analyze ${stock.symbol} for me`);
+        appendChatMessage('Stock Knows Master', `Switching to **${stock.symbol}** (${stock.bearishProb}% Bearish Risk warning). Checking invalidation levels & downside catalysts.`);
+      });
+
+      elements.dumpStocksList.appendChild(row);
+    });
+  }
+}
+
+/**
+ * Load Accuracy Tracker & Self-Reflection Journal
+ */
+async function loadAccuracyTracker() {
+  try {
+    const res = await fetch('/api/accuracy');
+    const data = await res.json();
+    if (data.success && data.metrics) {
+      state.accuracyInfo = data.metrics;
+      safeText(elements.badgeAccuracyRate, `${data.metrics.winRate}%`);
+      renderAccuracyModalContent(data.metrics);
+    }
+  } catch (err) {
+    console.warn('Error loading accuracy:', err);
+  }
+}
+
+function renderAccuracyModalContent(metrics) {
+  if (!elements.accuracyModalContent) return;
+
+  const predictionsList = metrics.recentPredictions.map(p => `
+    <div class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col gap-1">
+      <div class="flex justify-between items-center">
+        <span class="font-bold text-white text-xs">${p.symbol} (${p.stance})</span>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status.includes('SUCCESS') ? 'bg-emerald-500/20 text-emerald-300' : p.status.includes('STOP') ? 'bg-rose-500/20 text-rose-300' : 'bg-purple-500/20 text-purple-300'}">${p.status}</span>
+      </div>
+      <div class="flex justify-between text-[11px] text-slate-400 font-mono">
+        <span>Entry: ₹${p.entryPrice} ➔ Current: ₹${p.currentPrice}</span>
+        <span class="${p.outcomeReturn.startsWith('+') ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}">${p.outcomeReturn}</span>
+      </div>
+      <p class="text-[10px] text-slate-300 italic bg-slate-950/50 p-1.5 rounded-lg border border-white/5">
+        🧠 Self-Reflection: ${p.selfReflection}
+      </p>
+    </div>
+  `).join('');
+
+  elements.accuracyModalContent.innerHTML = `
+    <div class="p-3 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 flex items-center justify-between mb-3">
+      <div>
+        <div class="text-xs text-emerald-400 font-bold">Historical Model Accuracy Rate</div>
+        <div class="text-xl font-black font-mono text-emerald-300">${metrics.winRate}% Calibration</div>
+      </div>
+      <div class="text-right text-[11px] text-slate-400 font-mono">
+        Total Evaluated: ${metrics.totalEvaluated} Calls
+      </div>
+    </div>
+
+    <div class="mb-3 p-2.5 rounded-xl bg-purple-950/25 border border-purple-800/40 text-xs text-purple-200">
+      ${metrics.systemReflection}
+    </div>
+
+    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Recent Predictions & Live Verification</h4>
+    <div class="space-y-2">
+      ${predictionsList}
+    </div>
+  `;
+}
+
+function showAccuracyModal() {
+  if (state.accuracyInfo) {
+    renderAccuracyModalContent(state.accuracyInfo);
+  }
+  elements.accuracyModal?.classList.remove('hidden');
+}
+
+/**
+ * Core Multi-Agent Analysis Execution for Indian Ticker
+ */
+async function runAnalysis(symbol = 'RELIANCE') {
   if (state.isAnalyzing) return;
   state.isAnalyzing = true;
 
-  // Show live agent thinking pulse
-  showAgentThinking(true, `Consulting Agent 1 (Candle Scout) & Agent 2 (News Radar) for ${symbol}...`);
+  showAgentThinking(true, `Candle Scout (Agent 1) & News Radar (Agent 2) Indian market scan kar rahe hain for ${symbol}...`);
 
   try {
     const res = await fetch('/api/analyze', {
@@ -272,59 +502,49 @@ async function runAnalysis(symbol = 'NVDA') {
       throw new Error(json.error || 'Failed to analyze stock');
     }
 
-    const { candles, agent1Candle, agent2News, agent3Master, companyName, currentPrice, priceChange, priceChangePercent } = json.result;
+    const { candles, agent1Candle, agent2News, agent3Master, companyName, currentPrice, priceChange, priceChangePercent, tradingViewSymbol } = json.result;
 
-    // 1. Update Header Ticker Info
-    elements.stockSymbolDisplay.innerText = symbol;
-    elements.stockNameDisplay.innerText = companyName || `${symbol} Inc.`;
-    elements.stockPriceDisplay.innerText = `$${currentPrice.toFixed(2)}`;
-    
+    state.currentSymbol = symbol;
+    state.currentTvSymbol = tradingViewSymbol || `NSE:${symbol}`;
+
+    // 1. Update Header Ticker Info in ₹
+    safeText(elements.stockSymbolDisplay, symbol);
+    safeText(elements.stockNameDisplay, companyName || `${symbol} (NSE)`);
+    safeText(elements.stockPriceDisplay, `₹${currentPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`);
+
     const isUp = priceChange >= 0;
-    elements.stockChangeDisplay.innerText = `${isUp ? '+' : ''}$${priceChange.toFixed(2)} (${isUp ? '+' : ''}${priceChangePercent.toFixed(2)}%)`;
-    elements.stockChangeDisplay.className = `font-mono font-bold text-sm ${isUp ? 'text-emerald-400' : 'text-rose-400'}`;
+    if (elements.stockChangeDisplay) {
+      elements.stockChangeDisplay.innerText = `${isUp ? '+' : ''}₹${priceChange.toFixed(2)} (${isUp ? '+' : ''}${priceChangePercent.toFixed(2)}%)`;
+      elements.stockChangeDisplay.className = `mono-font font-bold text-sm ${isUp ? 'text-emerald-400' : 'text-rose-400'}`;
+    }
 
-    // 2. Render Candlestick Chart with Detected Patterns
-    state.chart.setData(candles, agent1Candle.detectedPatterns);
+    // 2. Render TradingView or Pattern Canvas Chart
+    renderTradingViewWidget(state.currentTvSymbol, state.theme);
+    if (state.chart) {
+      state.chart.setData(candles, agent1Candle.detectedPatterns);
+    }
 
-    // 3. Update Agent 1 Card (Candle Scout)
+    // 3. Render 3 Agent Cards
     renderAgent1(agent1Candle);
-
-    // 4. Update Agent 2 Card (News Radar)
     renderAgent2(agent2News);
-
-    // 5. Update Agent 3 Card (Stock Knows Master Verdict)
     renderAgent3(agent3Master);
 
-    // Update active ticker in carousel
-    document.querySelectorAll('.ticker-chip').forEach(c => {
-      if (c.querySelector('.font-bold')?.innerText === symbol) {
-        c.classList.add('active');
-      } else {
-        c.classList.remove('active');
-      }
-    });
+    // Refresh accuracy badge
+    if (json.result.accuracyInfo) {
+      safeText(elements.badgeAccuracyRate, `${json.result.accuracyInfo.winRate}%`);
+    }
 
   } catch (err) {
     console.error('Analysis error:', err);
-    appendChatMessage('Stock Knows Master', `⚠️ Sorry, couldn't load ${symbol}: ${err.message}. Please try another ticker like AAPL, NVDA, or TSLA.`);
+    appendChatMessage('Stock Knows Master', `⚠️ Error loading ${symbol}: ${err.message}. Kripya NSE ticker jaise RELIANCE, TATAMOTORS, HDFCBANK try karein.`);
   } finally {
     state.isAnalyzing = false;
     showAgentThinking(false);
   }
 }
 
-function safeText(el, text) {
-  if (el) el.innerText = text;
-}
-
-function safeWidth(el, width) {
-  if (el) el.style.width = width;
-}
-
 function renderAgent1(a1) {
   if (!a1) return;
-
-  // Probabilities
   safeText(elements.agent1BullishProb, `${a1.probabilities.bullish}%`);
   safeText(elements.agent1BearishProb, `${a1.probabilities.bearish}%`);
   safeText(elements.agent1NeutralProb, `${a1.probabilities.neutral}%`);
@@ -333,40 +553,30 @@ function renderAgent1(a1) {
   safeWidth(elements.agent1BarBearish, `${a1.probabilities.bearish}%`);
   safeWidth(elements.agent1BarNeutral, `${a1.probabilities.neutral}%`);
 
-  // Technical Gauges
   if (elements.agent1RsiValue) {
     elements.agent1RsiValue.innerText = a1.technicalMetrics.rsi14;
-    elements.agent1RsiValue.className = `font-mono font-bold ${a1.technicalMetrics.rsi14 > 70 ? 'text-rose-400' : a1.technicalMetrics.rsi14 < 30 ? 'text-emerald-400' : 'text-amber-400'}`;
+    elements.agent1RsiValue.className = `font-mono font-bold text-xs ${a1.technicalMetrics.rsi14 > 70 ? 'text-rose-400' : a1.technicalMetrics.rsi14 < 30 ? 'text-emerald-400' : 'text-amber-400'}`;
   }
 
-  safeText(elements.agent1Ema20Value, `$${a1.technicalMetrics.ema20.toFixed(2)}`);
-  safeText(elements.agent1SupportValue, `$${a1.technicalMetrics.support.toFixed(2)}`);
-  safeText(elements.agent1ResistanceValue, `$${a1.technicalMetrics.resistance.toFixed(2)}`);
-  
-  if (elements.agent1VolumeSurge) {
-    elements.agent1VolumeSurge.innerText = a1.technicalMetrics.isVolumeSurge ? 'Surge ⚡' : 'Normal';
-    elements.agent1VolumeSurge.className = `font-semibold text-xs ${a1.technicalMetrics.isVolumeSurge ? 'text-amber-400 font-bold' : 'text-slate-400'}`;
-  }
+  safeText(elements.agent1Ema20Value, `₹${a1.technicalMetrics.ema20.toFixed(2)}`);
+  safeText(elements.agent1SupportValue, `₹${a1.technicalMetrics.support.toFixed(2)}`);
+  safeText(elements.agent1ResistanceValue, `₹${a1.technicalMetrics.resistance.toFixed(2)}`);
 
-  // Patterns list
   if (elements.agent1PatternsList) {
     elements.agent1PatternsList.innerHTML = '';
     if (a1.detectedPatterns.length === 0) {
-      elements.agent1PatternsList.innerHTML = `<div class="text-xs text-slate-400 italic py-1">No single extreme reversal pattern on the last candle; price following moving averages.</div>`;
+      elements.agent1PatternsList.innerHTML = `<div class="text-[11px] text-slate-400 italic py-1">No single extreme reversal pattern on the last candle; price following moving averages.</div>`;
     } else {
       a1.detectedPatterns.forEach(p => {
         const isBull = p.bias === 'Bullish';
         const div = document.createElement('div');
-        div.className = 'flex items-center justify-between p-2 rounded-xl bg-slate-800/40 border border-slate-700/40 text-xs';
+        div.className = 'flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-[11px]';
         div.innerHTML = `
-          <div class="flex items-center gap-1.5 font-semibold">
+          <div class="flex items-center gap-1 font-semibold">
             <span>${isBull ? '✨' : '🔻'}</span>
             <span>${p.name}</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${isBull ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${p.bias}</span>
-            <span class="font-mono text-slate-400">${p.confidence}%</span>
-          </div>
+          <span class="text-[9px] px-1.5 py-0.2 rounded font-bold ${isBull ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${p.bias} (${p.confidence}%)</span>
         `;
         elements.agent1PatternsList.appendChild(div);
       });
@@ -376,8 +586,6 @@ function renderAgent1(a1) {
 
 function renderAgent2(a2) {
   if (!a2) return;
-
-  // Probabilities
   safeText(elements.agent2BullishProb, `${a2.probabilities.bullish}%`);
   safeText(elements.agent2BearishProb, `${a2.probabilities.bearish}%`);
   safeText(elements.agent2NeutralProb, `${a2.probabilities.neutral}%`);
@@ -386,31 +594,28 @@ function renderAgent2(a2) {
   safeWidth(elements.agent2BarBearish, `${a2.probabilities.bearish}%`);
   safeWidth(elements.agent2BarNeutral, `${a2.probabilities.neutral}%`);
 
-  // Sentiment Stats
   safeText(elements.agent2BuyingPressure, a2.buyingPressure);
-  safeText(elements.agent2RetailMood, a2.retailMood);
 
-  // News Articles
   if (elements.agent2ArticlesList) {
     elements.agent2ArticlesList.innerHTML = '';
     if (!a2.articles || a2.articles.length === 0) {
-      elements.agent2ArticlesList.innerHTML = `<div class="text-xs text-slate-400 italic py-1">No recent articles found for this ticker.</div>`;
+      elements.agent2ArticlesList.innerHTML = `<div class="text-[11px] text-slate-400 italic py-1">Monitoring live Indian headlines...</div>`;
     } else {
-      a2.articles.forEach(art => {
+      a2.articles.slice(0, 3).forEach(art => {
         const isPos = art.sentiment === 'Positive';
         const isNeg = art.sentiment === 'Negative';
-        const badgeClass = isPos ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : isNeg ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-slate-700/50 text-slate-300 border-slate-600/30';
+        const badgeClass = isPos ? 'bg-emerald-500/20 text-emerald-300' : isNeg ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-700/50 text-slate-300';
 
         const a = document.createElement('a');
         a.href = art.link || '#';
         a.target = '_blank';
-        a.className = 'block p-2.5 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700/40 text-xs transition';
+        a.className = 'block p-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-850 border border-slate-800 text-[11px] transition';
         a.innerHTML = `
-          <div class="flex justify-between items-start gap-2 mb-1">
-            <span class="text-slate-400 text-[10px]">${art.publisher} • ${art.publishedAt}</span>
-            <span class="text-[10px] px-1.5 py-0.5 rounded border ${badgeClass} font-semibold">${art.sentiment}</span>
+          <div class="flex justify-between items-center gap-1 mb-0.5">
+            <span class="text-slate-400 text-[9px] truncate max-w-[140px]">${art.publisher}</span>
+            <span class="text-[9px] px-1 py-0.2 rounded font-semibold ${badgeClass}">${art.sentiment}</span>
           </div>
-          <div class="font-medium text-slate-200 line-clamp-2 hover:text-purple-300">${art.title}</div>
+          <div class="font-medium text-slate-200 line-clamp-1 hover:text-purple-300">${art.title}</div>
         `;
         elements.agent2ArticlesList.appendChild(a);
       });
@@ -420,8 +625,6 @@ function renderAgent2(a2) {
 
 function renderAgent3(a3) {
   if (!a3) return;
-
-  // Master Combined Probabilities
   safeText(elements.agent3BullishProb, `${a3.probabilities.bullish}%`);
   safeText(elements.agent3BearishProb, `${a3.probabilities.bearish}%`);
   safeText(elements.agent3NeutralProb, `${a3.probabilities.neutral}%`);
@@ -430,28 +633,25 @@ function renderAgent3(a3) {
   safeWidth(elements.agent3BarBearish, `${a3.probabilities.bearish}%`);
   safeWidth(elements.agent3BarNeutral, `${a3.probabilities.neutral}%`);
 
-  // Action Verdict Badge
   safeText(elements.agent3VerdictText, a3.actionVerdict);
   const isStrongBull = a3.probabilities.bullish >= 65;
   const isStrongBear = a3.probabilities.bearish >= 65;
 
   if (elements.agent3VerdictBadge) {
-    elements.agent3VerdictBadge.className = `px-3 py-1.5 rounded-xl font-bold text-xs inline-flex items-center gap-1.5 ${
+    elements.agent3VerdictBadge.className = `px-2 py-0.5 rounded-lg text-[11px] font-extrabold inline-flex items-center gap-1.5 ${
       isStrongBull ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
       isStrongBear ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
       'bg-purple-500/20 text-purple-300 border border-purple-500/40'
     }`;
   }
 
-  // Feasibility
   safeText(elements.agent3IntradayScore, `${a3.intraday.probability}%`);
   safeText(elements.agent3IntradayText, a3.intraday.suitability);
   safeText(elements.agent3SwingScore, `${a3.swing.probability}%`);
   safeText(elements.agent3SwingText, a3.swing.suitability);
 
-  // Trading Anchors
-  safeText(elements.agent3StopLoss, `$${a3.levels.stopLoss}`);
-  safeText(elements.agent3Target1, `$${a3.levels.target1}`);
+  safeText(elements.agent3StopLoss, `₹${a3.levels.stopLoss}`);
+  safeText(elements.agent3Target1, `₹${a3.levels.target1}`);
   safeText(elements.agent3Rrr, a3.levels.riskRewardRatio);
 }
 
@@ -462,12 +662,10 @@ async function handleUserSendMessage() {
   const message = elements.chatInput.value.trim();
   if (!message) return;
 
-  // Append user bubble
   appendChatMessage('User', message);
   elements.chatInput.value = '';
 
-  // Show thinking animation
-  showAgentThinking(true, `Agent 3 is coordinating with Candle Scout & News Radar...`);
+  showAgentThinking(true, `Agent 3 Indian market data aur self-reflection check kar raha hai...`);
 
   try {
     const res = await fetch('/api/chat', {
@@ -486,19 +684,18 @@ async function handleUserSendMessage() {
     }
 
     const { reply, intent, targetSymbol, analysis } = data.response;
-
-    // Append Agent 3 response
     appendChatMessage('Stock Knows Master', reply);
 
-    // If chat requested a new symbol or market summary, update the UI!
     if (targetSymbol && targetSymbol !== state.currentSymbol && analysis) {
       state.currentSymbol = targetSymbol;
-      state.chart.setData(analysis.candles, analysis.agent1Candle.detectedPatterns);
+      state.currentTvSymbol = analysis.tradingViewSymbol || `NSE:${targetSymbol}`;
+      renderTradingViewWidget(state.currentTvSymbol, state.theme);
+      if (state.chart) state.chart.setData(analysis.candles, analysis.agent1Candle.detectedPatterns);
       renderAgent1(analysis.agent1Candle);
       renderAgent2(analysis.agent2News);
       renderAgent3(analysis.agent3Master);
-      elements.stockSymbolDisplay.innerText = targetSymbol;
-      elements.stockPriceDisplay.innerText = `$${analysis.currentPrice.toFixed(2)}`;
+      safeText(elements.stockSymbolDisplay, targetSymbol);
+      safeText(elements.stockPriceDisplay, `₹${analysis.currentPrice.toFixed(2)}`);
     }
   } catch (err) {
     appendChatMessage('Stock Knows Master', `⚠️ Error communicating with agents: ${err.message}`);
@@ -510,16 +707,15 @@ async function handleUserSendMessage() {
 function appendChatMessage(sender, text) {
   const isUser = sender === 'User';
   const bubble = document.createElement('div');
-  bubble.className = `flex gap-2.5 my-2.5 ${isUser ? 'justify-end' : 'justify-start'}`;
+  bubble.className = `flex gap-2 my-2 ${isUser ? 'justify-end' : 'justify-start'}`;
 
-  // Simple Markdown renderer
   const formattedText = text
     .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
     .replace(/\*(.*?)\*/g, '<i>$1</i>')
     .replace(/\n/g, '<br/>');
 
   bubble.innerHTML = `
-    ${!isUser ? `<div class="w-8 h-8 rounded-full bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-sm shadow flex-shrink-0">🧠</div>` : ''}
+    ${!isUser ? `<div class="w-7 h-7 rounded-full bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-xs shadow flex-shrink-0">🧠</div>` : ''}
     <div class="chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-agent'}">
       ${formattedText}
     </div>
@@ -540,7 +736,7 @@ function showAgentThinking(show, statusText = '') {
 }
 
 /**
- * Show Market Summary Modal
+ * Show Nifty & Sensex Market Summary Modal
  */
 function showMarketSummaryModal() {
   if (!state.marketSummary) {
@@ -552,25 +748,28 @@ function showMarketSummaryModal() {
 
 function renderSummaryModal() {
   if (!state.marketSummary || !elements.summaryModal) return;
-  const { summary, newsSummary } = state.marketSummary;
+  const { niftyStatus, sensexStatus, marketMood, topGainers = [] } = state.marketSummary;
 
   elements.summaryContent.innerHTML = `
-    <div class="mb-4">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-sm text-slate-400">Current Market Stance:</span>
-        <span class="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">${summary.marketMood}</span>
+    <div class="mb-3 p-3 rounded-xl bg-purple-950/30 border border-purple-500/30">
+      <div class="flex items-center justify-between mb-1.5">
+        <span class="font-bold text-white text-xs">🇮🇳 Indian Market Sentiment:</span>
+        <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">${marketMood}</span>
       </div>
-      <p class="text-xs text-slate-300 leading-relaxed">${newsSummary.advice}</p>
+      <div class="text-xs text-slate-300 font-mono space-y-0.5">
+        <div>• <b>${niftyStatus}</b></div>
+        <div>• <b>${sensexStatus}</b></div>
+      </div>
     </div>
 
-    <div class="space-y-2 mb-4">
-      <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Top Bullish Stocks People Are Buying</h4>
+    <div class="mb-3">
+      <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Today's Strongest Bullish Leaders (NSE)</h4>
       <div class="grid grid-cols-2 gap-2">
-        ${summary.topGainers.map(s => `
-          <button class="select-summary-stock p-2.5 rounded-xl bg-slate-800/60 hover:bg-purple-900/30 border border-slate-700/50 hover:border-purple-500/50 text-left transition flex justify-between items-center" data-symbol="${s.symbol}">
+        ${topGainers.map(s => `
+          <button class="select-summary-stock p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-500 text-left transition flex justify-between items-center" data-symbol="${s.symbol}">
             <div>
-              <div class="font-bold text-sm text-white">${s.symbol}</div>
-              <div class="text-xs text-slate-400">$${s.price.toFixed(2)}</div>
+              <div class="font-bold text-xs text-white">${s.symbol}</div>
+              <div class="text-[10px] text-slate-400">₹${s.price.toFixed(2)}</div>
             </div>
             <div class="text-xs font-bold font-mono ${s.changePercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${s.changePercent >= 0 ? '+' : ''}${s.changePercent.toFixed(2)}%</div>
           </button>
@@ -578,20 +777,18 @@ function renderSummaryModal() {
       </div>
     </div>
 
-    <div class="p-3 rounded-xl bg-purple-950/30 border border-purple-800/40 text-xs text-purple-200 flex items-center gap-2">
-      <span>💡</span>
-      <span>Click any stock above to command Candle Scout and News Radar to run a full probabilistic analysis!</span>
+    <div class="p-2.5 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-purple-200">
+      💡 Kisi bhi stock par click karein to open its real-time TradingView candlestick chart & 3 AI agents report!
     </div>
   `;
 
   document.querySelectorAll('.select-summary-stock').forEach(btn => {
     btn.addEventListener('click', () => {
       const sym = btn.dataset.symbol;
-      state.currentSymbol = sym;
       elements.summaryModal.classList.add('hidden');
       runAnalysis(sym);
       appendChatMessage('User', `Analyze ${sym} for me`);
-      appendChatMessage('Stock Knows Master', `Switching active radar to **${sym}**. Deploying Candle Scout and News Radar now!`);
+      appendChatMessage('Stock Knows Master', `Switching to **${sym}** (TradingView + Candle Scout + News Radar).`);
     });
   });
 

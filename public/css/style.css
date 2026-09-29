@@ -375,3 +375,14 @@ html.light #chart-tooltip {
   color: #0f172a;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
 }
+
+/* TradingView Real-Time Embed Sizing */
+#tradingview_widget,
+#tradingview_widget iframe {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 380px !important;
+  border: none !important;
+  border-radius: 0.75rem;
+}
+
