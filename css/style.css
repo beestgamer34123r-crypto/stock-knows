@@ -402,3 +402,129 @@ html.light #chart-tooltip {
   animation: flashRed 1.2s ease-out;
 }
 
+/* Mobile Phone Specific Optimizations & Column Overflow Prevention */
+@media (max-width: 640px) {
+  body {
+    font-size: 13px;
+  }
+  .cute-card {
+    padding: 0.75rem !important;
+    border-radius: 1rem;
+    overflow-x: hidden;
+  }
+  .brand-font {
+    font-size: 1.15rem !important;
+  }
+  #tradingview_widget,
+  #tradingview_widget iframe {
+    min-height: 290px !important;
+    height: 290px !important;
+  }
+  #tv-chart-container,
+  #canvas-chart-container {
+    height: 290px !important;
+  }
+  .prob-bar-container {
+    height: 8px;
+  }
+  .chat-bubble {
+    max-width: 95% !important;
+    padding: 0.65rem 0.85rem !important;
+    font-size: 0.8rem !important;
+  }
+  .btn-cute {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* Text Wrapping & Column Protection */
+.word-guard {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+/* Floating Toast Notifications Container */
+#toast-notifications-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+  max-width: 380px;
+  width: calc(100% - 2rem);
+}
+
+.stock-toast {
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
+  animation: slideInToast 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.stock-toast:hover {
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.8);
+}
+
+.stock-toast-out {
+  animation: slideOutToast 0.35s ease forwards;
+}
+
+@keyframes slideInToast {
+  from { opacity: 0; transform: translateX(50px) scale(0.95); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes slideOutToast {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(50px) scale(0.95); }
+}
+
+/* Autocomplete Suggestion Dropdown */
+.search-autocomplete-box {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.35rem;
+  background: rgba(15, 23, 42, 0.98);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 1rem;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.65);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+
+.search-suggestion-item {
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background-color 0.15s ease;
+}
+
+.search-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.search-suggestion-item:hover,
+.search-suggestion-item.active {
+  background: rgba(139, 92, 246, 0.2);
+}
+

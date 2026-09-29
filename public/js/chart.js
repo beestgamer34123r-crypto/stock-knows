@@ -56,7 +56,9 @@ class CandlestickChart {
     const dpr = window.devicePixelRatio || 1;
 
     this.width = rect.width;
-    this.height = Math.max(380, rect.height || 420);
+    // Responsive chart height: 300px on mobile, up to 390px on tablet/desktop
+    const isMobile = window.innerWidth < 640;
+    this.height = isMobile ? Math.max(290, rect.height || 290) : Math.max(380, rect.height || 390);
 
     this.canvas.width = this.width * dpr;
     this.canvas.height = this.height * dpr;
@@ -129,7 +131,7 @@ class CandlestickChart {
       ctx.lineTo(w - this.padding.right, y);
       ctx.stroke();
 
-      ctx.fillText(`$${p.toFixed(2)}`, w - this.padding.right + 8, y + 4);
+      ctx.fillText(`₹${p.toFixed(2)}`, w - this.padding.right + 8, y + 4);
     }
 
     // 2. Draw Volume Bars
@@ -365,6 +367,7 @@ class CandlestickChart {
   }
 
   initEvents() {
+    // Mouse hover
     this.canvas.addEventListener('mousemove', (e) => {
       if (!this.candles || this.candles.length === 0) return;
       const rect = this.canvas.getBoundingClientRect();
@@ -394,6 +397,36 @@ class CandlestickChart {
       this.draw();
       this.hideTooltip();
     });
+
+    // Touch Support for Mobile Phones
+    const handleTouchInteraction = (e) => {
+      if (!this.candles || this.candles.length === 0) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+
+      this.mousePos = { x, y };
+      const chartW = this.width - this.padding.left - this.padding.right;
+      const candleSlotW = chartW / this.candles.length;
+      const relX = x - this.padding.left;
+      const idx = Math.floor(relX / candleSlotW);
+
+      if (idx >= 0 && idx < this.candles.length) {
+        this.hoverIndex = idx;
+        this.draw();
+        this.updateTooltip(this.candles[idx], touch.clientX, touch.clientY);
+      }
+    };
+
+    this.canvas.addEventListener('touchstart', handleTouchInteraction, { passive: true });
+    this.canvas.addEventListener('touchmove', handleTouchInteraction, { passive: true });
+    this.canvas.addEventListener('touchend', () => {
+      this.hoverIndex = -1;
+      this.draw();
+      this.hideTooltip();
+    });
   }
 
   updateTooltip(candle, clientX, clientY) {
@@ -407,18 +440,18 @@ class CandlestickChart {
 
     this.tooltip.innerHTML = `
       <div class="tooltip-header flex justify-between items-center mb-1 text-xs text-slate-400">
-        <span>📅 ${candle.time || 'Candle'}</span>
+        <span>📅 ${candle.date || candle.time || 'Candle'}</span>
         <span class="${isBull ? 'text-emerald-400' : 'text-rose-400'} font-bold">${isBull ? '+' : ''}${pct}%</span>
       </div>
       <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs font-mono">
-        <div><span class="text-slate-400">Open:</span> <b>$${candle.open.toFixed(2)}</b></div>
-        <div><span class="text-slate-400">High:</span> <b>$${candle.high.toFixed(2)}</b></div>
-        <div><span class="text-slate-400">Low:</span> <b>$${candle.low.toFixed(2)}</b></div>
-        <div><span class="text-slate-400">Close:</span> <b>$${candle.close.toFixed(2)}</b></div>
+        <div><span class="text-slate-400">Open:</span> <b>₹${candle.open.toFixed(2)}</b></div>
+        <div><span class="text-slate-400">High:</span> <b>₹${candle.high.toFixed(2)}</b></div>
+        <div><span class="text-slate-400">Low:</span> <b>₹${candle.low.toFixed(2)}</b></div>
+        <div><span class="text-slate-400">Close:</span> <b>₹${candle.close.toFixed(2)}</b></div>
       </div>
       <div class="mt-1 text-xs text-slate-400 flex justify-between">
         <span>Vol: <b>${(candle.volume / 1e6).toFixed(1)}M</b></span>
-        <span>Chg: <b class="${isBull ? 'text-emerald-400' : 'text-rose-400'}">${diff >= 0 ? '+' : ''}$${diff}</b></span>
+        <span>Chg: <b class="${isBull ? 'text-emerald-400' : 'text-rose-400'}">${diff >= 0 ? '+' : ''}₹${diff}</b></span>
       </div>
       ${pattern ? `
         <div class="mt-2 pt-1 border-t border-slate-700/60 text-xs text-amber-300 font-semibold flex items-center gap-1">
@@ -434,12 +467,12 @@ class CandlestickChart {
     let left = clientX - cardRect.left + 15;
     let top = clientY - cardRect.top + 15;
 
-    // Boundary check so tooltip doesn't overflow
+    // Boundary check so tooltip never overflows phone or container
     if (left + 180 > cardRect.width) {
-      left = left - 200;
+      left = Math.max(5, cardRect.width - 200);
     }
     if (top + 130 > cardRect.height) {
-      top = top - 120;
+      top = Math.max(5, top - 120);
     }
 
     this.tooltip.style.left = `${Math.max(5, left)}px`;

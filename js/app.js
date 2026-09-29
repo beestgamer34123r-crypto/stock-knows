@@ -10,7 +10,7 @@ const state = {
   currentTvSymbol: 'NSE:RELIANCE',
   currentTimeframe: '1d',
   currentRange: '3mo',
-  chartMode: 'tv', // 'tv' or 'patterns'
+  chartMode: 'patterns', // Default to pro native pattern canvas with touch & trajectory cone
   chart: null,
   marketSummary: null,
   boomForecast: null,
@@ -18,7 +18,10 @@ const state = {
   geminiKey: localStorage.getItem('stock_knows_gemini_key') || '',
   theme: localStorage.getItem('stock_knows_theme') || 'dark',
   isAnalyzing: false,
-  tvWidgetInstance: null
+  tvWidgetInstance: null,
+  notificationsEnabled: localStorage.getItem('stock_knows_notifications_enabled') === 'true',
+  soundEnabled: localStorage.getItem('stock_knows_sound_enabled') !== 'false',
+  viewedStocks: JSON.parse(localStorage.getItem('stock_knows_viewed_history') || '[]')
 };
 
 // Safe DOM Setters
@@ -33,12 +36,30 @@ function safeWidth(el, width) {
 const elements = {
   stockSearchInput: document.getElementById('stock-search-input'),
   btnSearchStock: document.getElementById('btn-search-stock'),
+  stockSearchInputMobile: document.getElementById('stock-search-input-mobile'),
+  btnSearchStockMobile: document.getElementById('btn-search-stock-mobile'),
+  searchAutocompleteDesktop: document.getElementById('search-autocomplete-desktop'),
+  searchAutocompleteMobile: document.getElementById('search-autocomplete-mobile'),
   indicesBar: document.getElementById('indices-bar'),
   liveWatchlist: document.getElementById('live-watchlist'),
   btnSummarizeMarket: document.getElementById('btn-summarize-market'),
   btnOpenAccuracy: document.getElementById('btn-open-accuracy'),
   badgeAccuracyRate: document.getElementById('badge-accuracy-rate'),
   btnToggleTheme: document.getElementById('btn-toggle-theme'),
+
+  // Profile Modal & History
+  btnOpenProfile: document.getElementById('btn-open-profile'),
+  btnCloseProfile: document.getElementById('btn-close-profile'),
+  profileModal: document.getElementById('profile-modal'),
+  profileViewedList: document.getElementById('profile-viewed-list'),
+  profileViewedCounter: document.getElementById('profile-viewed-counter'),
+  badgeViewedCount: document.getElementById('badge-viewed-count'),
+  btnClearViewedHistory: document.getElementById('btn-clear-viewed-history'),
+
+  // Notifications Toggle & Container
+  btnNotificationsToggle: document.getElementById('btn-notifications-toggle'),
+  notificationsBellIcon: document.getElementById('notifications-bell-icon'),
+  toastContainer: document.getElementById('toast-notifications-container'),
 
   // Boom & Dump Forecast
   boomStocksList: document.getElementById('boom-stocks-list'),
@@ -145,6 +166,314 @@ const elements = {
   btnCloseSummary: document.getElementById('btn-close-summary')
 };
 
+// Database of popular NSE/BSE Indian stocks for search autocomplete & offline analysis
+const INDIAN_STOCKS_DB = [
+  { symbol: 'RELIANCE', name: 'Reliance Industries Ltd', sector: 'Energy / Conglomerate', price: 1385.40 },
+  { symbol: 'TATAMOTORS', name: 'Tata Motors Ltd', sector: 'Automobile / EV', price: 985.20 },
+  { symbol: 'HDFCBANK', name: 'HDFC Bank Ltd', sector: 'Banking / Private', price: 1642.50 },
+  { symbol: 'ICICIBANK', name: 'ICICI Bank Ltd', sector: 'Banking / Private', price: 1260.80 },
+  { symbol: 'INFY', name: 'Infosys Ltd', sector: 'Information Technology', price: 1910.40 },
+  { symbol: 'TCS', name: 'Tata Consultancy Services', sector: 'Information Technology', price: 4280.00 },
+  { symbol: 'SBIN', name: 'State Bank of India', sector: 'Banking / Public', price: 820.60 },
+  { symbol: 'ITC', name: 'ITC Ltd', sector: 'FMCG', price: 510.30 },
+  { symbol: 'BHARTIARTL', name: 'Bharti Airtel Ltd', sector: 'Telecom', price: 1690.00 },
+  { symbol: 'LT', name: 'Larsen & Toubro Ltd', sector: 'Capital Goods / Infra', price: 3640.00 },
+  { symbol: 'BAJFINANCE', name: 'Bajaj Finance Ltd', sector: 'NBFC / Financial Services', price: 7250.00 },
+  { symbol: 'MARUTI', name: 'Maruti Suzuki India Ltd', sector: 'Automobile', price: 12450.00 },
+  { symbol: 'ZOMATO', name: 'Zomato Ltd', sector: 'Consumer Tech', price: 278.40 },
+  { symbol: 'PAYTM', name: 'One97 Communications Ltd', sector: 'Fintech', price: 895.60 },
+  { symbol: 'ADANIENT', name: 'Adani Enterprises Ltd', sector: 'Metals & Mining', price: 2980.00 },
+  { symbol: 'WIPRO', name: 'Wipro Ltd', sector: 'Information Technology', price: 540.20 },
+  { symbol: 'KOTAKBANK', name: 'Kotak Mahindra Bank', sector: 'Banking / Private', price: 1810.00 },
+  { symbol: 'AXISBANK', name: 'Axis Bank Ltd', sector: 'Banking / Private', price: 1195.00 },
+  { symbol: 'TITAN', name: 'Titan Company Ltd', sector: 'Consumer Discretionary', price: 3450.00 },
+  { symbol: 'TATASTEEL', name: 'Tata Steel Ltd', sector: 'Metals & Mining', price: 158.30 },
+  { symbol: 'SUNPHARMA', name: 'Sun Pharmaceutical Ltd', sector: 'Healthcare / Pharma', price: 1890.00 },
+  { symbol: 'NTPC', name: 'NTPC Ltd', sector: 'Power / Utilities', price: 395.00 },
+  { symbol: 'POWERGRID', name: 'Power Grid Corp', sector: 'Power / Utilities', price: 328.00 },
+  { symbol: 'COALINDIA', name: 'Coal India Ltd', sector: 'Energy / Coal', price: 472.00 },
+  { symbol: 'HAL', name: 'Hindustan Aeronautics Ltd', sector: 'Defense / Aerospace', price: 4620.00 },
+  { symbol: 'BEL', name: 'Bharat Electronics Ltd', sector: 'Defense / Electronics', price: 295.00 }
+];
+
+// Zero-dependency Web Audio synthesizer chime for live alerts
+function playNotificationChime() {
+  if (!state.soundEnabled) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(587.33, now); // D5 note
+    osc.frequency.exponentialRampToValueAtTime(880.00, now + 0.15); // A5 note
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.36);
+  } catch (_) {
+    // AudioContext might be blocked until user interacts, safe to ignore
+  }
+}
+
+// In-App Toast & Browser Push Notifications
+function showNotificationToast({ title, message, type = 'info', symbol = null }) {
+  if (!elements.toastContainer) return;
+
+  playNotificationChime();
+
+  const toast = document.createElement('div');
+  toast.className = `stock-toast ${type === 'surge' ? 'surge' : ''}`;
+  const icon = type === 'surge' ? '🚀' : type === 'dump' ? '⚠️' : '🔔';
+
+  toast.innerHTML = `
+    <div class="toast-icon">${icon}</div>
+    <div class="toast-body">
+      <div class="toast-title">${title}</div>
+      <div class="toast-msg">${message}</div>
+    </div>
+    <button class="toast-close" title="Dismiss">✕</button>
+  `;
+
+  const dismiss = () => {
+    toast.classList.add('hide');
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 280);
+  };
+
+  toast.querySelector('.toast-close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+
+  if (symbol) {
+    toast.addEventListener('click', () => {
+      runAnalysis(symbol);
+      dismiss();
+    });
+  }
+
+  elements.toastContainer.appendChild(toast);
+
+  // Auto dismiss after 5 seconds
+  setTimeout(dismiss, 5000);
+
+  // If user enabled browser desktop notifications, dispatch Web Notification too
+  if (state.notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(`Stock Knows: ${title}`, {
+        body: message,
+        icon: 'favicon.ico'
+      });
+    } catch (_) {}
+  }
+}
+
+function toggleNotifications() {
+  state.notificationsEnabled = !state.notificationsEnabled;
+  localStorage.setItem('stock_knows_notifications_enabled', state.notificationsEnabled ? 'true' : 'false');
+  updateNotificationBellUI();
+
+  if (state.notificationsEnabled) {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    showNotificationToast({
+      title: '🔔 Notifications Activated',
+      message: 'Aapko live stock breakouts aur breaking news alerts milte rahenge!',
+      type: 'info'
+    });
+  } else {
+    showNotificationToast({
+      title: '🔕 Notifications Paused',
+      message: 'Live alerts sound & toasts pause kar diye gaye hain.',
+      type: 'info'
+    });
+  }
+}
+
+function updateNotificationBellUI() {
+  if (!elements.btnNotificationsToggle) return;
+  if (state.notificationsEnabled) {
+    elements.btnNotificationsToggle.classList.add('border-emerald-500/50', 'text-emerald-300');
+    elements.btnNotificationsToggle.classList.remove('border-amber-500/30', 'text-amber-300', 'text-slate-400');
+    if (elements.notificationsBellIcon) elements.notificationsBellIcon.innerText = '🔔';
+  } else {
+    elements.btnNotificationsToggle.classList.remove('border-emerald-500/50', 'text-emerald-300');
+    elements.btnNotificationsToggle.classList.add('border-slate-700/60', 'text-slate-400');
+    if (elements.notificationsBellIcon) elements.notificationsBellIcon.innerText = '🔕';
+  }
+}
+
+// User Profile: Track viewed stocks history
+function recordStockView(symbol, companyName, price, changePercent) {
+  if (!symbol) return;
+  const existingIdx = state.viewedStocks.findIndex(item => item.symbol === symbol);
+  const now = new Date();
+  const timeFormatted = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ', ' +
+                        now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+  const record = {
+    symbol,
+    name: companyName || symbol,
+    price: price || 0,
+    changePercent: changePercent !== undefined ? changePercent : 0,
+    viewedAt: timeFormatted,
+    timestamp: now.getTime()
+  };
+
+  if (existingIdx !== -1) {
+    state.viewedStocks.splice(existingIdx, 1);
+  }
+  state.viewedStocks.unshift(record);
+
+  if (state.viewedStocks.length > 30) {
+    state.viewedStocks.pop();
+  }
+
+  localStorage.setItem('stock_knows_viewed_history', JSON.stringify(state.viewedStocks));
+  updateViewedCountUI();
+  if (elements.profileModal && !elements.profileModal.classList.contains('hidden')) {
+    renderProfileModal();
+  }
+}
+
+function updateViewedCountUI() {
+  const count = state.viewedStocks.length;
+  safeText(elements.badgeViewedCount, count);
+  safeText(elements.profileViewedCounter, count);
+}
+
+function renderProfileModal() {
+  if (!elements.profileViewedList) return;
+  updateViewedCountUI();
+
+  if (state.viewedStocks.length === 0) {
+    elements.profileViewedList.innerHTML = `
+      <div class="text-center py-6 text-xs text-slate-500 italic">
+        Abhi tak koi stock nahi dekha. Search karein ya watchlist se chunein!
+      </div>
+    `;
+    return;
+  }
+
+  elements.profileViewedList.innerHTML = '';
+  state.viewedStocks.forEach(item => {
+    const isUp = item.changePercent >= 0;
+    const row = document.createElement('div');
+    row.className = 'p-2 sm:p-2.5 rounded-xl bg-slate-900/80 hover:bg-purple-950/30 border border-slate-800 hover:border-purple-500/50 cursor-pointer transition flex items-center justify-between gap-2';
+    row.innerHTML = `
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg ${isUp ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'} flex items-center justify-center font-bold text-xs shrink-0">
+          ${item.symbol.slice(0, 2)}
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold text-xs text-white">${item.symbol}</span>
+            <span class="text-[9px] text-slate-400 font-mono">${item.viewedAt || ''}</span>
+          </div>
+          <div class="text-[10px] text-slate-400 truncate max-w-[140px] sm:max-w-[200px]">${item.name}</div>
+        </div>
+      </div>
+      <div class="text-right shrink-0 font-mono">
+        <div class="text-xs font-bold text-white">₹${Number(item.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+        <div class="text-[10px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '+' : ''}${Number(item.changePercent).toFixed(2)}%</div>
+      </div>
+    `;
+
+    row.addEventListener('click', () => {
+      elements.profileModal?.classList.add('hidden');
+      runAnalysis(item.symbol);
+    });
+
+    elements.profileViewedList.appendChild(row);
+  });
+}
+
+function clearViewedHistory() {
+  state.viewedStocks = [];
+  localStorage.removeItem('stock_knows_viewed_history');
+  renderProfileModal();
+}
+
+// Search Autocomplete Suggestion Logic
+function setupSearchAutocomplete(inputEl, dropdownEl, onSelect) {
+  if (!inputEl || !dropdownEl) return;
+
+  function renderSuggestions(query) {
+    const q = query.trim().toUpperCase();
+    if (!q) {
+      dropdownEl.classList.remove('active');
+      dropdownEl.innerHTML = '';
+      return;
+    }
+
+    const matches = INDIAN_STOCKS_DB.filter(s => 
+      s.symbol.includes(q) || s.name.toUpperCase().includes(q) || s.sector.toUpperCase().includes(q)
+    ).slice(0, 7);
+
+    if (matches.length === 0) {
+      dropdownEl.classList.add('active');
+      dropdownEl.innerHTML = `
+        <div class="search-suggestion-item text-slate-400 text-center py-2 text-xs">
+          Press Enter or Scan to search "<b>${q}</b>"
+        </div>
+      `;
+      return;
+    }
+
+    dropdownEl.innerHTML = matches.map(s => `
+      <div class="search-suggestion-item" data-symbol="${s.symbol}">
+        <div>
+          <div class="font-bold text-white text-xs">${s.symbol}</div>
+          <div class="text-[10px] text-slate-400 truncate max-w-[180px]">${s.name}</div>
+        </div>
+        <div class="text-right font-mono">
+          <div class="text-xs font-bold text-slate-200">₹${s.price.toFixed(2)}</div>
+          <div class="text-[9px] text-purple-400">${s.sector}</div>
+        </div>
+      </div>
+    `).join('');
+
+    dropdownEl.classList.add('active');
+
+    dropdownEl.querySelectorAll('.search-suggestion-item').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const sym = el.dataset.symbol || q;
+        inputEl.value = '';
+        dropdownEl.classList.remove('active');
+        onSelect(sym);
+      });
+    });
+  }
+
+  inputEl.addEventListener('input', (e) => {
+    renderSuggestions(e.target.value);
+  });
+
+  inputEl.addEventListener('focus', (e) => {
+    if (e.target.value.trim()) {
+      renderSuggestions(e.target.value);
+    }
+  });
+
+  inputEl.addEventListener('blur', () => {
+    setTimeout(() => {
+      dropdownEl.classList.remove('active');
+    }, 200);
+  });
+}
+
 // Initialize Application
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme(state.theme);
@@ -165,11 +494,34 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initListeners() {
-  // Search
-  elements.btnSearchStock?.addEventListener('click', handleSearch);
+  // Desktop Search
+  elements.btnSearchStock?.addEventListener('click', () => handleSearch());
   elements.stockSearchInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSearch();
   });
+  setupSearchAutocomplete(elements.stockSearchInput, elements.searchAutocompleteDesktop, (sym) => runAnalysis(sym));
+
+  // Mobile Search
+  elements.btnSearchStockMobile?.addEventListener('click', () => handleSearch());
+  elements.stockSearchInputMobile?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSearch();
+  });
+  setupSearchAutocomplete(elements.stockSearchInputMobile, elements.searchAutocompleteMobile, (sym) => runAnalysis(sym));
+
+  // Notifications Toggle
+  elements.btnNotificationsToggle?.addEventListener('click', toggleNotifications);
+  updateNotificationBellUI();
+
+  // Profile Modal & Viewed History
+  elements.btnOpenProfile?.addEventListener('click', () => {
+    renderProfileModal();
+    elements.profileModal?.classList.remove('hidden');
+  });
+  elements.btnCloseProfile?.addEventListener('click', () => {
+    elements.profileModal?.classList.add('hidden');
+  });
+  elements.btnClearViewedHistory?.addEventListener('click', clearViewedHistory);
+  updateViewedCountUI();
 
   // Chart Switcher (TradingView vs Pattern Canvas)
   elements.btnShowTv?.addEventListener('click', () => switchChartMode('tv'));
@@ -177,10 +529,10 @@ function initListeners() {
 
   // Modals
   elements.btnSummarizeMarket?.addEventListener('click', showMarketSummaryModal);
-  elements.btnCloseSummary?.addEventListener('click', () => elements.summaryModal.classList.add('hidden'));
+  elements.btnCloseSummary?.addEventListener('click', () => elements.summaryModal?.classList.add('hidden'));
 
   elements.btnOpenAccuracy?.addEventListener('click', showAccuracyModal);
-  elements.btnCloseAccuracy?.addEventListener('click', () => elements.accuracyModal.classList.add('hidden'));
+  elements.btnCloseAccuracy?.addEventListener('click', () => elements.accuracyModal?.classList.add('hidden'));
   elements.btnRefreshAccuracy?.addEventListener('click', loadAccuracyTracker);
 
   // Fast Scalp Radar Trade Setup Button
@@ -289,10 +641,23 @@ function renderTradingViewWidget(tvSymbol = 'NSE:RELIANCE', theme = 'dark') {
   }
 }
 
-function handleSearch() {
-  const query = elements.stockSearchInput.value.trim().toUpperCase();
+function handleSearch(customQuery) {
+  let query = typeof customQuery === 'string' ? customQuery : '';
+  if (!query) {
+    if (elements.stockSearchInputMobile && elements.stockSearchInputMobile.value.trim()) {
+      query = elements.stockSearchInputMobile.value.trim();
+    } else if (elements.stockSearchInput && elements.stockSearchInput.value.trim()) {
+      query = elements.stockSearchInput.value.trim();
+    }
+  }
+
+  if (elements.stockSearchInput) elements.stockSearchInput.value = '';
+  if (elements.stockSearchInputMobile) elements.stockSearchInputMobile.value = '';
+  if (elements.searchAutocompleteDesktop) elements.searchAutocompleteDesktop.classList.remove('active');
+  if (elements.searchAutocompleteMobile) elements.searchAutocompleteMobile.classList.remove('active');
+
+  query = query.toUpperCase();
   if (query) {
-    elements.stockSearchInput.value = '';
     runAnalysis(query);
   }
 }
@@ -507,6 +872,18 @@ function startClientBackgroundTicker() {
       sentiment: advances >= declines ? 'Bullish' : 'Cautious'
     });
 
+    // Check for breakouts / price surges to send live toast notifications
+    updatedTicks.forEach(tick => {
+      if (Math.abs(tick.changePercent) >= 1.5 && Math.random() < 0.25) {
+        showNotificationToast({
+          title: `🚀 ${tick.symbol} Price Breakout!`,
+          message: `${tick.symbol} reached ₹${tick.price.toFixed(2)} (${tick.changePercent >= 0 ? '+' : ''}${tick.changePercent.toFixed(2)}%) with strong volume surge!`,
+          type: 'surge',
+          symbol: tick.symbol
+        });
+      }
+    });
+
     if (Math.random() < 0.35) {
       const alertTemplates = [
         { title: `⚡ ${updatedTicks[0]?.symbol || 'RELIANCE'} Volume Spike`, message: 'Institutions accumulating near VWAP support level.' },
@@ -517,6 +894,13 @@ function startClientBackgroundTicker() {
       ];
       const picked = alertTemplates[Math.floor(Math.random() * alertTemplates.length)];
       addLiveAlert(picked);
+      if (Math.random() < 0.35) {
+        showNotificationToast({
+          title: picked.title,
+          message: picked.message,
+          type: 'info'
+        });
+      }
     }
   }, 3500);
 }
@@ -558,9 +942,13 @@ function initLiveStream() {
         if (snap.watchlistTicks) updateWatchlistFromStream(snap.watchlistTicks);
 
         if (snap.liveAlerts && Array.isArray(snap.liveAlerts)) {
-          snap.liveAlerts.forEach(alt => addLiveAlert(alt));
+          snap.liveAlerts.forEach(alt => {
+            addLiveAlert(alt);
+            showNotificationToast({ title: alt.title || 'Breaking Alert', message: alt.message || alt, type: 'alert' });
+          });
         } else if (snap.alert) {
           addLiveAlert(snap.alert, snap.timestamp);
+          showNotificationToast({ title: snap.alert.title || 'Live Market Alert', message: snap.alert.message || snap.alert, type: 'alert' });
         }
       } catch (err) {
         console.warn('SSE message parse error:', err);
@@ -1000,6 +1388,9 @@ function applyAnalysisResult(symbol, result) {
   renderAgent2(agent2News);
   renderAgent3(agent3Master);
 
+  // 4. Record in User Profile & Recently Viewed Stocks History
+  recordStockView(symbol, companyName, currentPrice, priceChangePercent);
+
   // Refresh accuracy badge
   if (result.accuracyInfo) {
     safeText(elements.badgeAccuracyRate, `${result.accuracyInfo.winRate}%`);
@@ -1007,20 +1398,39 @@ function applyAnalysisResult(symbol, result) {
 }
 
 function runClientStandaloneAnalysis(symbol = 'RELIANCE') {
-  const popularStocks = {
-    'RELIANCE': { name: 'Reliance Industries Ltd', price: 1385.40, change: 19.80, changePercent: 1.45, isBull: true },
-    'TATAMOTORS': { name: 'Tata Motors Ltd', price: 985.20, change: 20.70, changePercent: 2.15, isBull: true },
-    'HDFCBANK': { name: 'HDFC Bank Ltd', price: 1642.50, change: -5.75, changePercent: -0.35, isBull: false },
-    'ICICIBANK': { name: 'ICICI Bank Ltd', price: 1260.80, change: 10.60, changePercent: 0.85, isBull: true },
-    'INFY': { name: 'Infosys Ltd', price: 1910.40, change: 20.80, changePercent: 1.10, isBull: true },
-    'TCS': { name: 'Tata Consultancy Services', price: 4280.00, change: -8.50, changePercent: -0.20, isBull: false },
-    'SBIN': { name: 'State Bank of India', price: 820.60, change: 7.70, changePercent: 0.95, isBull: true },
-    'ITC': { name: 'ITC Ltd', price: 510.30, change: 2.05, changePercent: 0.40, isBull: true },
-    'BHARTIARTL': { name: 'Bharti Airtel Ltd', price: 1690.00, change: 29.85, changePercent: 1.80, isBull: true },
-    'LT': { name: 'Larsen & Toubro Ltd', price: 3640.00, change: 25.30, changePercent: 0.70, isBull: true },
-    'BAJFINANCE': { name: 'Bajaj Finance Ltd', price: 7250.00, change: -58.50, changePercent: -0.80, isBull: false },
-    'MARUTI': { name: 'Maruti Suzuki India', price: 12450.00, change: 147.50, changePercent: 1.20, isBull: true }
-  };
+  // Prepopulate from Indian stocks database
+  const popularStocks = {};
+  INDIAN_STOCKS_DB.forEach(s => {
+    popularStocks[s.symbol] = {
+      name: s.name,
+      price: s.price,
+      change: Math.round(s.price * 0.012 * 100) / 100,
+      changePercent: 1.20,
+      isBull: true
+    };
+  });
+
+  // Tailored presets for major market movers
+  popularStocks['RELIANCE'] = { name: 'Reliance Industries Ltd', price: 1385.40, change: 19.80, changePercent: 1.45, isBull: true };
+  popularStocks['TATAMOTORS'] = { name: 'Tata Motors Ltd', price: 985.20, change: 20.70, changePercent: 2.15, isBull: true };
+  popularStocks['HDFCBANK'] = { name: 'HDFC Bank Ltd', price: 1642.50, change: -5.75, changePercent: -0.35, isBull: false };
+  popularStocks['ICICIBANK'] = { name: 'ICICI Bank Ltd', price: 1260.80, change: 10.60, changePercent: 0.85, isBull: true };
+  popularStocks['INFY'] = { name: 'Infosys Ltd', price: 1910.40, change: 20.80, changePercent: 1.10, isBull: true };
+  popularStocks['TCS'] = { name: 'Tata Consultancy Services', price: 4280.00, change: -8.50, changePercent: -0.20, isBull: false };
+  popularStocks['SBIN'] = { name: 'State Bank of India', price: 820.60, change: 7.70, changePercent: 0.95, isBull: true };
+  popularStocks['ITC'] = { name: 'ITC Ltd', price: 510.30, change: 2.05, changePercent: 0.40, isBull: true };
+  popularStocks['BHARTIARTL'] = { name: 'Bharti Airtel Ltd', price: 1690.00, change: 29.85, changePercent: 1.80, isBull: true };
+  popularStocks['LT'] = { name: 'Larsen & Toubro Ltd', price: 3640.00, change: 25.30, changePercent: 0.70, isBull: true };
+  popularStocks['BAJFINANCE'] = { name: 'Bajaj Finance Ltd', price: 7250.00, change: -58.50, changePercent: -0.80, isBull: false };
+  popularStocks['MARUTI'] = { name: 'Maruti Suzuki India', price: 12450.00, change: 147.50, changePercent: 1.20, isBull: true };
+  popularStocks['ZOMATO'] = { name: 'Zomato Ltd', price: 278.40, change: 7.20, changePercent: 2.65, isBull: true };
+  popularStocks['PAYTM'] = { name: 'One97 Communications Ltd', price: 895.60, change: -12.40, changePercent: -1.37, isBull: false };
+  popularStocks['ADANIENT'] = { name: 'Adani Enterprises Ltd', price: 2980.00, change: 48.60, changePercent: 1.66, isBull: true };
+  popularStocks['WIPRO'] = { name: 'Wipro Ltd', price: 540.20, change: 4.80, changePercent: 0.90, isBull: true };
+  popularStocks['KOTAKBANK'] = { name: 'Kotak Mahindra Bank', price: 1810.00, change: -8.20, changePercent: -0.45, isBull: false };
+  popularStocks['TITAN'] = { name: 'Titan Company Ltd', price: 3450.00, change: 38.50, changePercent: 1.13, isBull: true };
+  popularStocks['TATASTEEL'] = { name: 'Tata Steel Ltd', price: 158.30, change: 2.10, changePercent: 1.34, isBull: true };
+  popularStocks['HAL'] = { name: 'Hindustan Aeronautics Ltd', price: 4620.00, change: 85.00, changePercent: 1.87, isBull: true };
 
   const stockInfo = popularStocks[symbol] || {
     name: `${symbol} (NSE India)`,
