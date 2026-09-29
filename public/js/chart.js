@@ -20,12 +20,20 @@ class CandlestickChart {
     window.addEventListener('resize', () => this.resizeAndDraw());
   }
 
-  setData(candles = [], patterns = []) {
+  setData(candles = [], patterns = [], trajectory = null) {
     this.candles = candles;
     this.patterns = patterns;
+    if (trajectory) {
+      this.trajectory = trajectory;
+    }
     this.ema20 = this.computeEMA(candles.map(c => c.close), 20);
     this.hoverIndex = -1;
     this.resizeAndDraw();
+  }
+
+  setTrajectory(trajectory) {
+    this.trajectory = trajectory;
+    this.draw();
   }
 
   computeEMA(values, period = 20) {
@@ -233,6 +241,80 @@ class CandlestickChart {
           ctx.fillText(pillText, pillX + pillW / 2, pillY + 12);
         }
       });
+    }
+
+    // 5B. Draw Predicted Future Trajectory Channel (Upward or Downward Path Forecast)
+    if (this.trajectory && numCandles > 0) {
+      const lastCandle = this.candles[numCandles - 1];
+      const startX = getX(numCandles - 1);
+      const startY = getY(lastCandle.close);
+      const endX = Math.min(w - this.padding.right, startX + candleSlotW * 6);
+
+      const isBullish = this.trajectory.direction === 'bullish';
+      const targetY = getY(this.trajectory.target1 || (isBullish ? lastCandle.close * 1.018 : lastCandle.close * 0.982));
+      const stopLossY = getY(this.trajectory.stopLoss || (isBullish ? lastCandle.close * 0.988 : lastCandle.close * 1.012));
+
+      // 1. Shaded Future Trajectory Cone
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, targetY);
+      ctx.lineTo(endX, stopLossY);
+      ctx.closePath();
+
+      const coneGrad = ctx.createLinearGradient(startX, startY, endX, targetY);
+      if (isBullish) {
+        coneGrad.addColorStop(0, 'rgba(16, 185, 129, 0.05)');
+        coneGrad.addColorStop(1, 'rgba(16, 185, 129, 0.22)');
+      } else {
+        coneGrad.addColorStop(0, 'rgba(244, 63, 94, 0.05)');
+        coneGrad.addColorStop(1, 'rgba(244, 63, 94, 0.22)');
+      }
+      ctx.fillStyle = coneGrad;
+      ctx.fill();
+
+      // 2. Projected Directional Arrow Line
+      ctx.beginPath();
+      ctx.strokeStyle = isBullish ? '#10b981' : '#f43f5e';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([5, 4]);
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, targetY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 3. Arrow Tip
+      const arrowSize = 6;
+      ctx.beginPath();
+      ctx.arc(endX, targetY, arrowSize, 0, Math.PI * 2);
+      ctx.fillStyle = isBullish ? '#10b981' : '#f43f5e';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // 4. Invalidation / Stop-Loss Line
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.moveTo(startX, stopLossY);
+      ctx.lineTo(endX, stopLossY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 5. Target Label Flag
+      const targetText = isBullish
+        ? `🎯 Target: ₹${(this.trajectory.target1 || 0).toFixed(2)} (${this.trajectory.probability || 70}% Up)`
+        : `🔻 Breakdown: ₹${(this.trajectory.target1 || 0).toFixed(2)} (${this.trajectory.probability || 70}% Down)`;
+      
+      ctx.font = 'bold 10px Outfit, Inter, sans-serif';
+      ctx.fillStyle = isBullish ? '#34d399' : '#fb7185';
+      ctx.textAlign = 'right';
+      ctx.fillText(targetText, endX - 10, isBullish ? targetY - 8 : targetY + 14);
+
+      // Stop-loss label
+      ctx.fillStyle = '#f87171';
+      ctx.fillText(`🛑 Invalidation SL: ₹${(this.trajectory.stopLoss || 0).toFixed(2)}`, endX - 10, isBullish ? stopLossY + 12 : stopLossY - 8);
     }
 
     // 6. Draw Date Labels along bottom

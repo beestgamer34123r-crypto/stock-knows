@@ -13,6 +13,7 @@ const agent1Candle = require('./services/agent1Candle');
 const agent2News = require('./services/agent2News');
 const agent3Master = require('./services/agent3Master');
 const accuracyTracker = require('./services/accuracyTracker');
+const liveStream = require('./services/liveStream');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,6 +21,15 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Real-Time Server-Sent Events (SSE) Stream
+app.get('/api/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  if (res.flushHeaders) res.flushHeaders();
+  liveStream.addClient(res);
+});
 
 // 1. Indian Market Summary Endpoint (Nifty 50, Sensex, Bank Nifty + Top Equities)
 app.get('/api/market-summary', async (req, res) => {

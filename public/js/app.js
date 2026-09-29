@@ -101,6 +101,38 @@ const elements = {
   btnSendChat: document.getElementById('btn-send-chat'),
   agentThinkingIndicator: document.getElementById('agent-thinking-indicator'),
 
+  // Header SSE & Breadth Indicators
+  headerBreadthAdvances: document.getElementById('header-breadth-advances'),
+  headerBreadthDeclines: document.getElementById('header-breadth-declines'),
+  headerBreadthSentiment: document.getElementById('header-breadth-sentiment'),
+  sseConnectionStatus: document.getElementById('sse-connection-status'),
+
+  // Market Breadth Section (Advances vs Declines)
+  breadthAdRatioBadge: document.getElementById('breadth-ad-ratio-badge'),
+  breadthBarAdvances: document.getElementById('breadth-bar-advances'),
+  breadthBarDeclines: document.getElementById('breadth-bar-declines'),
+  breadthAdvancesCount: document.getElementById('breadth-advances-count'),
+  breadthAdvancesPct: document.getElementById('breadth-advances-pct'),
+  breadthDeclinesCount: document.getElementById('breadth-declines-count'),
+  breadthDeclinesPct: document.getElementById('breadth-declines-pct'),
+  breadthUnchangedCount: document.getElementById('breadth-unchanged-count'),
+  breadthSummaryText: document.getElementById('breadth-summary-text'),
+
+  // Fast Intraday Profit Scalper Card
+  btnTradeFastScalp: document.getElementById('btn-trade-fast-scalp'),
+  fastScalpSymbol: document.getElementById('fast-scalp-symbol'),
+  fastScalpBias: document.getElementById('fast-scalp-bias'),
+  fastScalpEntry: document.getElementById('fast-scalp-entry'),
+  fastScalpTarget: document.getElementById('fast-scalp-target'),
+  fastScalpGain: document.getElementById('fast-scalp-gain'),
+  fastScalpSl: document.getElementById('fast-scalp-sl'),
+  fastScalpHorizon: document.getElementById('fast-scalp-horizon'),
+  fastScalpRrr: document.getElementById('fast-scalp-rrr'),
+  fastScalpReason: document.getElementById('fast-scalp-reason'),
+
+  // Live Alerts Feed (SSE Stream)
+  liveAlertsFeed: document.getElementById('live-alerts-feed'),
+
   // Accuracy Modal
   accuracyModal: document.getElementById('accuracy-modal'),
   accuracyModalContent: document.getElementById('accuracy-modal-content'),
@@ -117,7 +149,7 @@ const elements = {
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme(state.theme);
 
-  // Initialize Canvas Chart engine for pattern overlays
+  // Initialize Canvas Chart engine for pattern overlays & future trajectory
   state.chart = new CandlestickChart('candle-canvas', 'chart-tooltip');
 
   // Load initial data
@@ -125,13 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAccuracyTracker();
   runAnalysis(state.currentSymbol);
 
+  // Initialize Real-Time SSE Stream (Zero page reload continuous live background data)
+  initLiveStream();
+
   // Bind Event Listeners
   initListeners();
-
-  // Auto-refresh live watchlist every 30 seconds
-  setInterval(() => {
-    loadMarketSummary(true);
-  }, 30000);
 });
 
 function initListeners() {
@@ -152,6 +182,20 @@ function initListeners() {
   elements.btnOpenAccuracy?.addEventListener('click', showAccuracyModal);
   elements.btnCloseAccuracy?.addEventListener('click', () => elements.accuracyModal.classList.add('hidden'));
   elements.btnRefreshAccuracy?.addEventListener('click', loadAccuracyTracker);
+
+  // Fast Scalp Radar Trade Setup Button
+  elements.btnTradeFastScalp?.addEventListener('click', () => {
+    if (state.currentFastScalp?.symbol) {
+      const s = state.currentFastScalp;
+      runAnalysis(s.symbol);
+      appendChatMessage('User', `Mujhe ${s.symbol} ka intraday fast profit setup dekhna hai.`);
+      const entryText = s.entryZone || (s.entryPrice ? `₹${s.entryPrice}` : 'Market Price');
+      const targetText = s.quickTarget || (s.target1 ? `₹${s.target1}` : 'Target 1');
+      const slText = s.tightStopLoss || (s.stopLoss ? `₹${s.stopLoss}` : 'Stop Loss');
+      const durText = s.expectedDuration || s.timeHorizon || '15-45 mins';
+      appendChatMessage('Stock Knows Master', `⚡ **${s.symbol}** fast scalp setup load kiya gaya hai! Entry: **${entryText}** | Quick Target: **${targetText}** | Strict SL: **${slText}**. Time horizon ~**${durText}**. Chart par 'Pattern & Target Path' toggle karke future target cone check karein!`);
+    }
+  });
 
   // Theme Toggle
   elements.btnToggleTheme?.addEventListener('click', () => {
@@ -280,12 +324,13 @@ function renderIndicesBar(indices = []) {
 
   indices.forEach(idx => {
     const isUp = idx.changePercent >= 0;
+    const key = idx.symbol.includes('NSEI') ? 'nifty50' : idx.symbol.includes('BSESN') ? 'sensex' : 'bankNifty';
     const item = document.createElement('div');
     item.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 font-mono text-xs cursor-pointer hover:border-purple-500 transition whitespace-nowrap';
     item.innerHTML = `
       <span class="font-bold text-slate-200">${idx.name}</span>
-      <span class="text-slate-100 font-semibold">₹${idx.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
-      <span class="text-[11px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '▲ +' : '▼ '}${idx.changePercent.toFixed(2)}%</span>
+      <span id="index-price-${key}" class="text-slate-100 font-semibold">₹${idx.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+      <span id="index-pct-${key}" class="text-[11px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '▲ +' : '▼ '}${idx.changePercent.toFixed(2)}%</span>
     `;
 
     item.addEventListener('click', () => {
@@ -305,7 +350,10 @@ function renderLiveWatchlist(stocks = []) {
     const card = document.createElement('button');
     const isActive = stock.symbol === state.currentSymbol;
 
-    card.className = `w-full p-2.5 rounded-xl border text-left flex justify-between items-center transition ${
+    card.id = `watchlist-item-${stock.symbol}`;
+    card.dataset.symbol = stock.symbol;
+    card.dataset.price = stock.price;
+    card.className = `w-full p-2.5 rounded-xl border text-left flex justify-between items-center transition duration-200 ${
       isActive
         ? 'bg-purple-900/25 border-purple-500/60 shadow-md'
         : 'bg-slate-900/50 hover:bg-slate-900 border-slate-800 hover:border-purple-500/40'
@@ -314,14 +362,14 @@ function renderLiveWatchlist(stocks = []) {
     card.innerHTML = `
       <div>
         <div class="flex items-center gap-1.5 font-bold text-xs text-white">
-          <span class="w-2 h-2 rounded-full ${isUp ? 'bg-emerald-400' : 'bg-rose-400'}"></span>
+          <span id="watchlist-dot-${stock.symbol}" class="w-2 h-2 rounded-full ${isUp ? 'bg-emerald-400' : 'bg-rose-400'}"></span>
           <span>${stock.symbol}</span>
         </div>
         <div class="text-[10px] text-slate-400 truncate max-w-[110px]">${stock.name}</div>
       </div>
       <div class="text-right font-mono">
-        <div class="text-xs font-bold text-white">₹${stock.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-        <div class="text-[10px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">
+        <div id="watchlist-price-${stock.symbol}" class="text-xs font-bold text-white">₹${stock.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+        <div id="watchlist-pct-${stock.symbol}" class="text-[10px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}">
           ${isUp ? '+' : ''}${stock.changePercent.toFixed(2)}%
         </div>
       </div>
@@ -333,6 +381,201 @@ function renderLiveWatchlist(stocks = []) {
 
     elements.liveWatchlist.appendChild(card);
   });
+}
+
+/**
+ * Real-Time Continuous Server-Sent Events (SSE) Stream
+ * Live background ticks, market breadth updates & breaking signal alerts without page reload!
+ */
+function initLiveStream() {
+  if (state.eventSource) {
+    try { state.eventSource.close(); } catch (_) {}
+  }
+
+  try {
+    state.eventSource = new EventSource('/api/stream');
+
+    state.eventSource.onopen = () => {
+      safeText(elements.sseConnectionStatus, 'Live SSE 🟢');
+      if (elements.sseConnectionStatus) {
+        elements.sseConnectionStatus.className = 'text-emerald-400 font-semibold';
+      }
+    };
+
+    state.eventSource.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        const snap = payload.data || payload;
+
+        if (snap.marketBreadth) updateMarketBreadth(snap.marketBreadth);
+        if (snap.quickIntradayScalp) updateFastScalp(snap.quickIntradayScalp);
+        if (snap.indices) updateIndicesFromStream(snap.indices);
+        if (snap.stocks) updateWatchlistFromStream(snap.stocks);
+        if (snap.watchlistTicks) updateWatchlistFromStream(snap.watchlistTicks);
+
+        if (snap.liveAlerts && Array.isArray(snap.liveAlerts)) {
+          snap.liveAlerts.forEach(alt => addLiveAlert(alt));
+        } else if (snap.alert) {
+          addLiveAlert(snap.alert, snap.timestamp);
+        }
+      } catch (err) {
+        console.warn('SSE message parse error:', err);
+      }
+    };
+
+    state.eventSource.onerror = () => {
+      safeText(elements.sseConnectionStatus, 'Reconnecting... 🟡');
+      if (elements.sseConnectionStatus) {
+        elements.sseConnectionStatus.className = 'text-amber-400 font-semibold';
+      }
+    };
+  } catch (err) {
+    console.warn('Failed to start EventSource:', err);
+  }
+}
+
+function updateMarketBreadth(breadth) {
+  if (!breadth) return;
+  const { advances = 0, declines = 0, unchanged = 0, total = 12, advancePercent, ratio = '1.0 : 1', sentiment = 'Neutral' } = breadth;
+  
+  const advPct = advancePercent !== undefined ? advancePercent : Math.round((advances / Math.max(1, total)) * 100);
+  const decPct = Math.round((declines / Math.max(1, total)) * 100);
+
+  // Update header mini badges
+  safeText(elements.headerBreadthAdvances, `${advances} Up`);
+  safeText(elements.headerBreadthDeclines, `${declines} Down`);
+  if (elements.headerBreadthSentiment) {
+    elements.headerBreadthSentiment.innerText = advances >= declines ? 'Bullish' : 'Cautious';
+    const isBull = advances >= declines;
+    elements.headerBreadthSentiment.className = `px-1.5 py-0.2 rounded text-[10px] font-semibold ${
+      isBull ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+    }`;
+  }
+
+  // Update dedicated breadth section
+  safeText(elements.breadthAdvancesCount, advances);
+  safeText(elements.breadthAdvancesPct, `${advPct}% of NSE 50`);
+  safeText(elements.breadthDeclinesCount, declines);
+  safeText(elements.breadthDeclinesPct, `${decPct}% of NSE 50`);
+  safeText(elements.breadthUnchangedCount, unchanged);
+  safeText(elements.breadthAdRatioBadge, `A/D: ${ratio}`);
+
+  safeWidth(elements.breadthBarAdvances, `${advPct}%`);
+  safeWidth(elements.breadthBarDeclines, `${decPct}%`);
+
+  safeText(elements.breadthSummaryText, sentiment);
+}
+
+function updateFastScalp(scalp) {
+  if (!scalp) return;
+  state.currentFastScalp = scalp;
+  safeText(elements.fastScalpSymbol, scalp.symbol);
+  safeText(elements.fastScalpBias, scalp.setupType || scalp.bias || 'Bullish Scalp');
+  safeText(elements.fastScalpEntry, scalp.entryZone || `₹${scalp.entryPrice?.toFixed(2) || '--'}`);
+  safeText(elements.fastScalpTarget, scalp.quickTarget || `₹${scalp.target1?.toFixed(2) || '--'}`);
+  safeText(elements.fastScalpGain, scalp.potentialGain || '+1.2%');
+  safeText(elements.fastScalpSl, scalp.tightStopLoss || `₹${scalp.stopLoss?.toFixed(2) || '--'}`);
+  safeText(elements.fastScalpHorizon, scalp.expectedDuration || scalp.timeHorizon || '15-45m');
+  safeText(elements.fastScalpRrr, scalp.rrRatio || '1 : 1.7');
+  safeText(elements.fastScalpReason, scalp.actionAdvice || scalp.reason || 'Momentum breakout setup');
+}
+
+function updateIndicesFromStream(indices = {}) {
+  if (!indices) return;
+  const items = [
+    { key: 'nifty50', data: indices.nifty50 },
+    { key: 'sensex', data: indices.sensex },
+    { key: 'bankNifty', data: indices.bankNifty }
+  ];
+  items.forEach(({ key, data }) => {
+    if (!data) return;
+    const priceEl = document.getElementById(`index-price-${key}`);
+    const pctEl = document.getElementById(`index-pct-${key}`);
+    const isUp = (data.changePercent || 0) >= 0;
+    if (priceEl) priceEl.innerText = `₹${(data.price || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+    if (pctEl) {
+      pctEl.innerText = `${isUp ? '▲ +' : '▼ '}${(data.changePercent || 0).toFixed(2)}%`;
+      pctEl.className = `text-[11px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`;
+    }
+  });
+}
+
+function updateWatchlistFromStream(ticks = []) {
+  if (!elements.liveWatchlist) return;
+
+  ticks.forEach(tick => {
+    const card = document.getElementById(`watchlist-item-${tick.symbol}`);
+    if (!card) return;
+
+    const priceEl = document.getElementById(`watchlist-price-${tick.symbol}`);
+    const pctEl = document.getElementById(`watchlist-pct-${tick.symbol}`);
+    const dotEl = document.getElementById(`watchlist-dot-${tick.symbol}`);
+
+    const oldPrice = parseFloat(card.dataset.price || '0');
+    const newPrice = tick.price;
+    const isUp = tick.changePercent >= 0;
+
+    if (oldPrice > 0 && Math.abs(newPrice - oldPrice) > 0.01) {
+      const flashClass = newPrice > oldPrice ? 'tick-flash-up' : 'tick-flash-down';
+      card.classList.remove('tick-flash-up', 'tick-flash-down');
+      void card.offsetWidth; // Trigger reflow for fresh animation
+      card.classList.add(flashClass);
+    }
+    card.dataset.price = newPrice;
+
+    if (priceEl) priceEl.innerText = `₹${newPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (pctEl) {
+      pctEl.innerText = `${isUp ? '+' : ''}${tick.changePercent.toFixed(2)}%`;
+      pctEl.className = `text-[10px] font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`;
+    }
+    if (dotEl) {
+      dotEl.className = `w-2 h-2 rounded-full ${isUp ? 'bg-emerald-400' : 'bg-rose-400'}`;
+    }
+
+    // If currently viewed stock is updated, live flash & update top display too!
+    if (tick.symbol === state.currentSymbol) {
+      safeText(elements.stockPriceDisplay, `₹${newPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      if (elements.stockChangeDisplay) {
+        const diff = tick.change || (tick.changePercent * newPrice / 100);
+        elements.stockChangeDisplay.innerText = `${isUp ? '+' : ''}₹${diff.toFixed(2)} (${isUp ? '+' : ''}${tick.changePercent.toFixed(2)}%)`;
+        elements.stockChangeDisplay.className = `mono-font font-bold text-sm ${isUp ? 'text-emerald-400' : 'text-rose-400'}`;
+      }
+    }
+  });
+}
+
+function addLiveAlert(alertObj, timestamp) {
+  if (!elements.liveAlertsFeed || !alertObj) return;
+
+  // Remove initial connecting message
+  const placeholder = elements.liveAlertsFeed.querySelector('.italic');
+  if (placeholder) placeholder.remove();
+
+  const title = typeof alertObj === 'string' ? alertObj : (alertObj.title || alertObj.message);
+  const subtitle = typeof alertObj === 'object' && alertObj.message && alertObj.title ? alertObj.message : '';
+  const timeStr = typeof alertObj === 'object' && alertObj.time ? alertObj.time : (timestamp ? new Date(timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleTimeString('en-IN'));
+
+  // Avoid duplicate adjacent alerts
+  if (elements.liveAlertsFeed.firstElementChild && elements.liveAlertsFeed.firstElementChild.innerText.includes(title)) {
+    return;
+  }
+
+  const alertItem = document.createElement('div');
+  alertItem.className = 'p-1.5 rounded-lg bg-slate-900/90 border border-purple-500/20 text-[10px] text-slate-200 flex flex-col gap-0.5 transition';
+  alertItem.innerHTML = `
+    <div class="flex items-center justify-between">
+      <span class="font-bold text-white">${title}</span>
+      <span class="text-purple-400 font-mono text-[9px] shrink-0">${timeStr}</span>
+    </div>
+    ${subtitle ? `<div class="text-slate-400 text-[10px] leading-tight">${subtitle}</div>` : ''}
+  `;
+
+  elements.liveAlertsFeed.prepend(alertItem);
+
+  // Keep max 15 alerts to avoid DOM bloat
+  while (elements.liveAlertsFeed.children.length > 15) {
+    elements.liveAlertsFeed.removeChild(elements.liveAlertsFeed.lastChild);
+  }
 }
 
 /**
@@ -518,10 +761,19 @@ async function runAnalysis(symbol = 'RELIANCE') {
       elements.stockChangeDisplay.className = `mono-font font-bold text-sm ${isUp ? 'text-emerald-400' : 'text-rose-400'}`;
     }
 
-    // 2. Render TradingView or Pattern Canvas Chart
+    // 2. Render TradingView or Pattern Canvas Chart with Future Trajectory Cone
+    const isBull = agent3Master.probabilities.bullish >= agent3Master.probabilities.bearish;
+    const trajectory = {
+      direction: isBull ? 'bullish' : 'bearish',
+      probability: isBull ? agent3Master.probabilities.bullish : agent3Master.probabilities.bearish,
+      target1: parseFloat(agent3Master.levels?.target1) || (isBull ? currentPrice * 1.02 : currentPrice * 0.98),
+      stopLoss: parseFloat(agent3Master.levels?.stopLoss) || (isBull ? currentPrice * 0.985 : currentPrice * 1.015)
+    };
+    state.currentTrajectory = trajectory;
+
     renderTradingViewWidget(state.currentTvSymbol, state.theme);
     if (state.chart) {
-      state.chart.setData(candles, agent1Candle.detectedPatterns);
+      state.chart.setData(candles, agent1Candle.detectedPatterns, trajectory);
     }
 
     // 3. Render 3 Agent Cards
@@ -690,7 +942,17 @@ async function handleUserSendMessage() {
       state.currentSymbol = targetSymbol;
       state.currentTvSymbol = analysis.tradingViewSymbol || `NSE:${targetSymbol}`;
       renderTradingViewWidget(state.currentTvSymbol, state.theme);
-      if (state.chart) state.chart.setData(analysis.candles, analysis.agent1Candle.detectedPatterns);
+      
+      const isBull = analysis.agent3Master.probabilities.bullish >= analysis.agent3Master.probabilities.bearish;
+      const trajectory = {
+        direction: isBull ? 'bullish' : 'bearish',
+        probability: isBull ? analysis.agent3Master.probabilities.bullish : analysis.agent3Master.probabilities.bearish,
+        target1: parseFloat(analysis.agent3Master.levels?.target1) || (isBull ? analysis.currentPrice * 1.02 : analysis.currentPrice * 0.98),
+        stopLoss: parseFloat(analysis.agent3Master.levels?.stopLoss) || (isBull ? analysis.currentPrice * 0.985 : analysis.currentPrice * 1.015)
+      };
+      state.currentTrajectory = trajectory;
+
+      if (state.chart) state.chart.setData(analysis.candles, analysis.agent1Candle.detectedPatterns, trajectory);
       renderAgent1(analysis.agent1Candle);
       renderAgent2(analysis.agent2News);
       renderAgent3(analysis.agent3Master);

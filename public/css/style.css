@@ -386,3 +386,19 @@ html.light #chart-tooltip {
   border-radius: 0.75rem;
 }
 
+/* Real-Time Price Tick Flash */
+@keyframes flashGreen {
+  0% { background-color: rgba(16, 185, 129, 0.35); }
+  100% { background-color: transparent; }
+}
+@keyframes flashRed {
+  0% { background-color: rgba(244, 63, 94, 0.35); }
+  100% { background-color: transparent; }
+}
+.tick-flash-up {
+  animation: flashGreen 1.2s ease-out;
+}
+.tick-flash-down {
+  animation: flashRed 1.2s ease-out;
+}
+

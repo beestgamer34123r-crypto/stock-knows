@@ -71,17 +71,159 @@
 
     <!-- Live Indian Indices Bar (Nifty 50, Sensex, Bank Nifty) -->
     <div class="border-t border-white/5 bg-slate-900/60 px-4 py-1.5">
-      <div class="max-w-7xl mx-auto flex items-center gap-4 text-xs overflow-x-auto scrollbar-none">
-        <span class="text-[11px] font-bold text-slate-400 flex items-center gap-1.5 uppercase tracking-wider whitespace-nowrap">
-          <span class="pulse-dot bg-emerald-400"></span> Live Market:
-        </span>
-        <div id="indices-bar" class="flex items-center gap-3">
-          <!-- Populated by JS -->
-          <div class="text-xs text-slate-400">Loading Nifty 50 & Sensex...</div>
+      <div class="max-w-7xl mx-auto flex items-center justify-between gap-4 text-xs overflow-x-auto scrollbar-none">
+        <div class="flex items-center gap-3">
+          <span class="text-[11px] font-bold text-slate-400 flex items-center gap-1.5 uppercase tracking-wider whitespace-nowrap">
+            <span class="pulse-dot bg-emerald-400"></span> Live Market:
+          </span>
+          <div id="indices-bar" class="flex items-center gap-3">
+            <!-- Populated by JS -->
+            <div class="text-xs text-slate-400">Loading Nifty 50 & Sensex...</div>
+          </div>
+        </div>
+
+        <!-- Real-Time SSE Stream Status & Mini Breadth Counter -->
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="flex items-center gap-2 px-2.5 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] font-mono">
+            <span class="text-slate-400">Breadth:</span>
+            <span id="header-breadth-advances" class="text-emerald-400 font-bold">-- Up</span>
+            <span class="text-slate-600">|</span>
+            <span id="header-breadth-declines" class="text-rose-400 font-bold">-- Down</span>
+            <span id="header-breadth-sentiment" class="px-1.5 py-0.2 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-semibold">Active</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+            <span class="pulse-dot bg-emerald-400"></span>
+            <span id="sse-connection-status" class="text-emerald-400 font-semibold">Live SSE</span>
+          </div>
         </div>
       </div>
     </div>
   </header>
+
+  <!-- MARKET BREADTH & FAST INTRADAY PROFIT RADAR (Requested by user) -->
+  <section class="max-w-7xl w-full mx-auto px-4 pt-3">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+      
+      <!-- 1. Market Breadth Card (Kitne Upar Jaare Hain, Kitne Neeche) (5 Cols) -->
+      <div class="lg:col-span-5 cute-card p-3.5 bg-gradient-to-r from-slate-900/90 via-slate-900/90 to-purple-950/20 border-white/10 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">⚖️</span>
+              <div>
+                <h3 class="font-extrabold text-xs text-white uppercase tracking-wider flex items-center gap-1.5">
+                  NSE Market Breadth
+                  <span class="pulse-dot bg-emerald-400"></span>
+                </h3>
+                <p class="text-[10px] text-slate-400">Live Advancing vs Declining Stocks Count</p>
+              </div>
+            </div>
+            <div id="breadth-ad-ratio-badge" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              A/D: -- (Calculating)
+            </div>
+          </div>
+
+          <!-- Dual Progress Bar (Advances Green vs Declines Red) -->
+          <div class="w-full h-3 rounded-full bg-slate-800/80 overflow-hidden flex mb-2 border border-white/5">
+            <div id="breadth-bar-advances" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500" style="width: 50%;"></div>
+            <div id="breadth-bar-declines" class="h-full bg-gradient-to-r from-rose-500 to-rose-600 transition-all duration-500" style="width: 50%;"></div>
+          </div>
+
+          <!-- Counts Grid -->
+          <div class="grid grid-cols-3 gap-2 text-center text-xs font-mono">
+            <div class="p-1.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20">
+              <div class="text-[10px] text-emerald-400 font-semibold flex items-center justify-center gap-1">
+                <span>🟢</span> Upar (Advances)
+              </div>
+              <div id="breadth-advances-count" class="text-sm font-black text-emerald-300">--</div>
+              <div id="breadth-advances-pct" class="text-[9px] text-slate-400">--%</div>
+            </div>
+
+            <div class="p-1.5 rounded-xl bg-rose-950/30 border border-rose-500/20">
+              <div class="text-[10px] text-rose-400 font-semibold flex items-center justify-center gap-1">
+                <span>🔴</span> Neeche (Declines)
+              </div>
+              <div id="breadth-declines-count" class="text-sm font-black text-rose-300">--</div>
+              <div id="breadth-declines-pct" class="text-[9px] text-slate-400">--%</div>
+            </div>
+
+            <div class="p-1.5 rounded-xl bg-slate-800/40 border border-slate-700/30">
+              <div class="text-[10px] text-slate-400 font-semibold flex items-center justify-center gap-1">
+                <span>⚪</span> Neutral / Flat
+              </div>
+              <div id="breadth-unchanged-count" class="text-sm font-black text-slate-300">0</div>
+              <div class="text-[9px] text-slate-400">NSE Universe</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
+          <span id="breadth-summary-text">Tracking live market sentiment & movement...</span>
+          <span class="text-purple-300 font-mono">Zero reload live</span>
+        </div>
+      </div>
+
+      <!-- 2. Fast Intraday Profit Scalper Spotlight (Jaldi Profit Focus) (7 Cols) -->
+      <div class="lg:col-span-7 cute-card p-3.5 bg-gradient-to-r from-purple-950/30 via-slate-900/90 to-emerald-950/20 border-purple-500/30 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">⚡</span>
+              <div>
+                <h3 class="font-extrabold text-xs text-white uppercase tracking-wider flex items-center gap-1.5">
+                  Fast Intraday Scalper Radar
+                  <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">Quick Profit Target</span>
+                </h3>
+                <p class="text-[10px] text-slate-400">Jaldi profit ke liye setup: Quick entry, tight stop loss & strict target</p>
+              </div>
+            </div>
+            <button id="btn-trade-fast-scalp" class="btn-cute btn-primary text-xs py-1 px-2.5">
+              <span>Trade Setup</span> ➔
+            </button>
+          </div>
+
+          <!-- Scalp Details Row -->
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs font-mono mb-2">
+            <div class="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+              <span class="text-[9px] text-slate-400 block font-sans">Stock</span>
+              <span id="fast-scalp-symbol" class="text-sm font-bold text-white">--</span>
+              <span id="fast-scalp-bias" class="text-[9px] text-emerald-400 font-semibold block">--</span>
+            </div>
+
+            <div class="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+              <span class="text-[9px] text-slate-400 block font-sans">Entry Price</span>
+              <span id="fast-scalp-entry" class="text-xs font-bold text-slate-200">₹--</span>
+              <span class="text-[9px] text-slate-400 block">At Market</span>
+            </div>
+
+            <div class="p-2 rounded-xl bg-emerald-950/30 border border-emerald-500/30">
+              <span class="text-[9px] text-emerald-400 block font-sans">Quick Target 🎯</span>
+              <span id="fast-scalp-target" class="text-xs font-bold text-emerald-300">₹--</span>
+              <span id="fast-scalp-gain" class="text-[9px] text-emerald-400 font-semibold block">+--%</span>
+            </div>
+
+            <div class="p-2 rounded-xl bg-rose-950/30 border border-rose-500/30">
+              <span class="text-[9px] text-rose-400 block font-sans">Strict SL 🛑</span>
+              <span id="fast-scalp-sl" class="text-xs font-bold text-rose-300">₹--</span>
+              <span class="text-[9px] text-rose-400 block">Cut Loss Fast</span>
+            </div>
+
+            <div class="p-2 rounded-xl bg-purple-950/30 border border-purple-500/30 col-span-2 sm:col-span-1">
+              <span class="text-[9px] text-purple-300 block font-sans">Est. Time</span>
+              <span id="fast-scalp-horizon" class="text-xs font-bold text-purple-200">15-45m</span>
+              <span id="fast-scalp-rrr" class="text-[9px] text-purple-400 font-semibold block">1 : 1.5</span>
+            </div>
+          </div>
+
+          <div class="p-1.5 rounded-lg bg-slate-950/50 border border-white/5 text-[11px] text-slate-300 flex items-center justify-between">
+            <span class="truncate pr-2">💡 Scalp Logic: <b id="fast-scalp-reason" class="text-purple-300 font-normal">Scanning high-volume intraday momentum setups...</b></span>
+            <span class="text-[9px] text-slate-400 shrink-0 font-mono">Real-time Stream</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
 
   <!-- STARTING BOOM OR DUMP NEWS FORECAST BANNER (As requested by user!) -->
   <section class="max-w-7xl w-full mx-auto px-4 pt-4">
@@ -165,15 +307,27 @@
         </div>
 
         <!-- Live Watchlist Scroll Area -->
-        <div id="live-watchlist" class="space-y-1.5 overflow-y-auto max-h-[620px] pr-1">
+        <div id="live-watchlist" class="space-y-1.5 overflow-y-auto max-h-[420px] pr-1">
           <!-- Populated by JS -->
           <div class="text-xs text-slate-500 py-2">Loading live NSE stocks...</div>
         </div>
 
         <!-- Watchlist Info footer -->
-        <div class="mt-3 pt-2 border-t border-white/5 text-[11px] text-slate-400 text-center">
-          🟢 Green = Moving Up | 🔴 Red = Moving Down<br/>
-          Click any stock to switch chart & analysis!
+        <div class="mt-2 pt-2 border-t border-white/5 text-[10px] text-slate-400 text-center">
+          🟢 Moving Up | 🔴 Moving Down • Zero Reload
+        </div>
+
+        <!-- Live Event & Pattern Alerts Feed (Background Stream) -->
+        <div class="mt-2 pt-2 border-t border-white/10 flex flex-col flex-1">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <span class="pulse-dot bg-amber-400"></span> Live Signal Alerts
+            </span>
+            <span class="text-[9px] text-emerald-400 font-mono">Stream Active</span>
+          </div>
+          <div id="live-alerts-feed" class="space-y-1.5 max-h-[170px] overflow-y-auto pr-1 text-[11px]">
+            <div class="text-[10px] text-slate-500 italic py-1">Connecting to live market stream...</div>
+          </div>
         </div>
 
       </div>
@@ -203,8 +357,8 @@
             <button id="btn-show-tv" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-600 text-white transition flex items-center gap-1">
               <span>📈</span> TradingView
             </button>
-            <button id="btn-show-patterns" class="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-400 hover:text-white bg-slate-900 border border-slate-800 transition flex items-center gap-1">
-              <span>🕯️</span> Pattern Flags
+            <button id="btn-show-patterns" class="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-400 hover:text-white bg-slate-900 border border-slate-800 transition flex items-center gap-1" title="Candlestick Patterns & Projected Future Trajectory Cone">
+              <span>🔮</span> Pattern & Target Path
             </button>
           </div>
         </div>
